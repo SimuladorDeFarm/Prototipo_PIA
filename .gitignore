@@ -1,0 +1,53 @@
+# ==========================================
+# Entornos Virtuales y Dependencias
+# ==========================================
+.venv/
+venv/
+ENV/
+env/
+pythonenv/
+dist/
+build/
+*.egg-info/
+
+# ==========================================
+# Archivos de Configuración y Secretos (¡CRÍTICO!)
+# ==========================================
+.env
+.env.[a-zA-Z]*
+!.env.example
+secrets.json
+
+# ==========================================
+# Caché de Python y Compilación
+# ==========================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ==========================================
+# Bases de Datos Locales (Si usas SQLite para desarrollo)
+# ==========================================
+*.db
+*.sqlite3
+
+# ==========================================
+# Configuraciones de Editores de Código
+# ==========================================
+# VS Code
+.vscode/
+!.vscode/extensions.json
+
+# PyCharm / JetBrains
+.idea/
+
+# Logs del sistema y archivos temporales
+*.log
+.DS_Store
+Thumbs.db
