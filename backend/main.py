@@ -4,6 +4,7 @@ from pathlib import Path
 
 import soundfile as sf
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 
 from models.src.inferencia import Predictor
 from preprocessing import preprocesar
@@ -27,6 +28,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="PIA — Predicción de Emociones", lifespan=lifespan)
+
+# CORS abierto: prototipo preliminar, el frontend corre en otro origen.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def _inferir(waveform):

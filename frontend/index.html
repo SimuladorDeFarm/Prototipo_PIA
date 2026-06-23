@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PIA — Predicción de Emociones por Voz</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>PIA · Emoción por Voz</h1>
+      <p class="sub">Sube un archivo de audio y el modelo predice la emoción.</p>
+    </header>
+
+    <section class="card">
+      <label class="file-drop" id="dropZone">
+        <input type="file" id="fileInput" accept="audio/*" hidden>
+        <span id="fileLabel">Seleccionar archivo de audio (.wav)</span>
+      </label>
+
+      <div class="recorder">
+        <button id="recordBtn" class="secondary">🎙️ Grabar voz</button>
+        <span id="recordTime" class="rec-time" hidden>0:00</span>
+      </div>
+
+      <audio id="player" controls hidden></audio>
+
+      <div class="actions">
+        <button id="predictBtn" disabled>Predecir emoción</button>
+        <button id="testBtn" class="secondary">Probar audio de ejemplo</button>
+      </div>
+    </section>
+
+    <section class="card result" id="resultCard" hidden>
+      <div id="status" class="status"></div>
+
+      <div id="resultBody" hidden>
+        <div class="top-emotion">
+          <span id="emojiBig"></span>
+          <div>
+            <div id="emotionName" class="emotion-name"></div>
+            <div id="confidence" class="confidence"></div>
+          </div>
+        </div>
+
+        <div id="ranking" class="ranking"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

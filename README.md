@@ -1,6 +1,6 @@
 # PIA — Predicción de Emociones por Voz
 
-Prototipo de API que recibe un archivo de audio y predice la emoción usando un modelo HuBERT fine-tuneado sobre 7 clases: neutral, felicidad, tristeza, enojo, miedo, disgusto y sorpresa.
+Prototipo que recibe audio (archivo o grabación desde el micrófono) y predice la emoción usando un modelo HuBERT fine-tuneado sobre 7 clases: neutral, felicidad, tristeza, enojo, miedo, disgusto y sorpresa. Incluye una API en FastAPI y un frontend web en vanilla JS.
 
 ---
 
@@ -8,6 +8,7 @@ Prototipo de API que recibe un archivo de audio y predice la emoción usando un 
 
 - Python 3.12
 - ~360 MB de espacio para la caché de HuBERT (se descarga automáticamente la primera vez)
+- Un navegador moderno (para el frontend y la grabación por micrófono)
 
 ---
 
@@ -24,12 +25,43 @@ pip install -r requirements.txt
 
 ## Uso
 
-**Levantar el servidor:**
+El sistema tiene dos partes: el **backend** (API) y el **frontend** (web). Cada uno corre en su propia terminal.
+
+### 1. Levantar el backend
 
 ```bash
 cd backend
 .venv/bin/fastapi dev main.py
 ```
+
+Queda disponible en `http://localhost:8000`.
+
+### 2. Levantar el frontend
+
+En otra terminal:
+
+```bash
+cd frontend
+python3 -m http.server 5500
+```
+
+Abre `http://localhost:5500` en el navegador.
+
+> El frontend apunta a `http://localhost:8000` (definido en `frontend/js/app.js`). Si cambias el puerto del backend, ajústalo ahí.
+
+### Desde el frontend puedes:
+
+- **Subir un archivo** `.wav` y predecir su emoción.
+- **Grabar tu voz** con el micrófono: se convierte a WAV en el navegador y se envía al backend.
+- **Probar el audio de ejemplo** (un clip fijo del dataset), sin subir nada.
+
+Cada predicción muestra la emoción ganadora con su confianza y el ranking completo de las 7 clases.
+
+---
+
+## Uso directo de la API (opcional)
+
+Si prefieres consumir la API sin el frontend:
 
 **Probar con el audio fijo de prueba:**
 
