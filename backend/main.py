@@ -1,21 +1,21 @@
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
-
+import joblib
 import soundfile as sf
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-
 from models.src.inferencia import Predictor
 from preprocessing import preprocesar
 
-CHECKPOINT = Path(__file__).parent / "models" / "clasificador_voz.pt"
+# Rutas configuradas de forma relativa para evitar errores
+BASE_DIR = Path(__file__).parent
+CHECKPOINT = BASE_DIR / "models" / "clasificador_voz.pt"
+MODELO_ROSTRO = joblib.load(BASE_DIR / "models" / "random_forest.joblib")
 
-# Audio fijo para pruebas: Actor_01, emoción joy (03)
-TEST_AUDIO = Path(__file__).parent.parent / "dataset" / "Actor_01" / "03-01-03-01-01-01-01.wav"
+TEST_AUDIO = BASE_DIR.parent / "dataset" / "Actor_01" / "03-01-03-01-01-01-01.wav"
 
 _predictor: Predictor | None = None
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,17 +26,14 @@ async def lifespan(app: FastAPI):
     yield
     _predictor = None
 
-
 app = FastAPI(title="PIA — Predicción de Emociones", lifespan=lifespan)
 
-# CORS abierto: prototipo preliminar, el frontend corre en otro origen.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 def _inferir(waveform):
     tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
@@ -47,10 +44,8 @@ def _inferir(waveform):
     finally:
         Path(tmp.name).unlink(missing_ok=True)
 
-
 @app.post("/predecir")
 async def predecir(audio: UploadFile = File(...)):
-    """Recibe un archivo de audio y devuelve la emoción predicha."""
     contenido = await audio.read()
     try:
         waveform = preprocesar(contenido)
@@ -60,10 +55,18 @@ async def predecir(audio: UploadFile = File(...)):
     resultado["ranking"] = [list(par) for par in resultado["ranking"]]
     return resultado
 
+@app.post("/predecir/rostro")
+async def predecir_rostro(archivo: UploadFile = File(...)):
+    """Recibe una imagen y devuelve la emoción detectada."""
+    # Guardamos temporalmente
+    with open("temp_image.jpg", "wb") as buffer:
+        buffer.write(await archivo.read())
+    
+    # Aquí iría tu lógica de extracción de rasgos
+    return {"mensaje": "Endpoint de rostro configurado", "status": "recibido"}
 
 @app.get("/test")
 async def test():
-    """Corre inferencia sobre el audio de prueba fijo (Actor_01, joy)."""
     if not TEST_AUDIO.exists():
         raise HTTPException(status_code=404, detail=f"Audio de prueba no encontrado: {TEST_AUDIO}")
     with open(TEST_AUDIO, "rb") as f:
@@ -74,7 +77,6 @@ async def test():
     resultado["archivo_prueba"] = TEST_AUDIO.name
     return resultado
 
-
 @app.get("/")
 def home():
-    return {"estado": "activo", "endpoints": ["/predecir (POST)", "/test (GET)"]}
+    return {"estado": "activo", "endpoints": ["/predecir (POST)", "/test (GET)", "/predecir/rostro (POST)"]}
