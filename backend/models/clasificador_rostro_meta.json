@@ -1,0 +1,56 @@
+{
+  "tipo": "RandomForestClassifier",
+  "features": [
+    "AU01",
+    "AU02",
+    "AU04",
+    "AU05",
+    "AU06",
+    "AU07",
+    "AU09",
+    "AU10",
+    "AU11",
+    "AU12",
+    "AU14",
+    "AU15",
+    "AU17",
+    "AU20",
+    "AU23",
+    "AU24",
+    "AU25",
+    "AU26",
+    "AU28",
+    "AU43",
+    "FaceScore"
+  ],
+  "n_features": 21,
+  "clases": [
+    "anger",
+    "disgust",
+    "fear",
+    "happy",
+    "neutral",
+    "sad",
+    "surprise"
+  ],
+  "umbral_facescore": 0.9,
+  "pose_max_grados": 45.0,
+  "formato_artefacto": "bundle joblib: {modelo, features, clases, umbral_facescore, pose_max_grados, version}",
+  "hiperparametros": {
+    "n_estimators": 300,
+    "max_features": "sqrt",
+    "criterion": "gini",
+    "bootstrap": true,
+    "class_weight": "balanced",
+    "random_state": 42
+  },
+  "entrenamiento": {
+    "particiones": [
+      "Train",
+      "Train_balanced"
+    ],
+    "n_train": 13528,
+    "n_test": 13168,
+    "csv": "pyfeat_features_v5.csv"
+  }
+}

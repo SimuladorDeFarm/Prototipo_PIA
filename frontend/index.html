@@ -3,52 +3,97 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PIA — Predicción de Emociones por Voz</title>
+  <title>PIA — Predicción de Emociones</title>
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <main class="container">
+  <main class="container wide">
     <header>
-      <h1>PIA · Emoción por Voz</h1>
-      <p class="sub">Sube un archivo de audio y el modelo predice la emoción.</p>
+      <h1>PIA · Predicción de Emociones</h1>
+      <p class="sub">Analiza la emoción por voz o por rostro.</p>
     </header>
 
-    <section class="card">
-      <label class="file-drop" id="dropZone">
-        <input type="file" id="fileInput" accept="audio/*" hidden>
-        <span id="fileLabel">Seleccionar archivo de audio (.wav)</span>
-      </label>
+    <div class="modules">
+      <!-- ===================== MÓDULO VOZ ===================== -->
+      <div class="module">
+        <h2 class="module-title">🎙️ Emoción por Voz</h2>
 
-      <div class="recorder">
-        <button id="recordBtn" class="secondary">🎙️ Grabar voz</button>
-        <span id="recordTime" class="rec-time" hidden>0:00</span>
-      </div>
+        <section class="card">
+          <label class="file-drop" id="dropZone">
+            <input type="file" id="fileInput" accept="audio/*" hidden>
+            <span id="fileLabel">Seleccionar archivo de audio (.wav)</span>
+          </label>
 
-      <audio id="player" controls hidden></audio>
-
-      <div class="actions">
-        <button id="predictBtn" disabled>Predecir emoción</button>
-        <button id="testBtn" class="secondary">Probar audio de ejemplo</button>
-      </div>
-    </section>
-
-    <section class="card result" id="resultCard" hidden>
-      <div id="status" class="status"></div>
-
-      <div id="resultBody" hidden>
-        <div class="top-emotion">
-          <span id="emojiBig"></span>
-          <div>
-            <div id="emotionName" class="emotion-name"></div>
-            <div id="confidence" class="confidence"></div>
+          <div class="recorder">
+            <button id="recordBtn" class="secondary">🎙️ Grabar voz</button>
+            <span id="recordTime" class="rec-time" hidden>0:00</span>
           </div>
-        </div>
 
-        <div id="ranking" class="ranking"></div>
+          <audio id="player" controls hidden></audio>
+
+          <div class="actions">
+            <button id="predictBtn" disabled>Predecir emoción</button>
+            <button id="testBtn" class="secondary">Probar audio de ejemplo</button>
+          </div>
+        </section>
+
+        <section class="card result" id="resultCard" hidden>
+          <div id="status" class="status"></div>
+          <div id="resultBody" hidden>
+            <div class="top-emotion">
+              <span id="emojiBig"></span>
+              <div>
+                <div id="emotionName" class="emotion-name"></div>
+                <div id="confidence" class="confidence"></div>
+              </div>
+            </div>
+            <div id="ranking" class="ranking"></div>
+          </div>
+        </section>
       </div>
-    </section>
+
+      <!-- ===================== MÓDULO ROSTRO ===================== -->
+      <div class="module">
+        <h2 class="module-title">📷 Emoción por Rostro</h2>
+
+        <section class="card">
+          <label class="file-drop" id="dropZoneR">
+            <input type="file" id="fileInputR" accept="image/*" hidden>
+            <span id="fileLabelR">Seleccionar imagen (.jpg, .png)</span>
+          </label>
+
+          <div class="recorder">
+            <button id="cameraBtn" class="secondary">📷 Usar cámara</button>
+            <button id="captureBtn" class="secondary" hidden>📸 Capturar</button>
+          </div>
+
+          <video id="video" playsinline hidden></video>
+          <img id="preview" alt="Vista previa" hidden>
+          <canvas id="canvas" hidden></canvas>
+
+          <div class="actions">
+            <button id="predictBtnR" disabled>Predecir emoción</button>
+          </div>
+        </section>
+
+        <section class="card result" id="resultCardR" hidden>
+          <div id="statusR" class="status"></div>
+          <div id="resultBodyR" hidden>
+            <div class="top-emotion">
+              <span id="emojiBigR"></span>
+              <div>
+                <div id="emotionNameR" class="emotion-name"></div>
+                <div id="confidenceR" class="confidence"></div>
+              </div>
+            </div>
+            <div id="rankingR" class="ranking"></div>
+          </div>
+        </section>
+      </div>
+    </div>
   </main>
 
   <script src="js/app.js"></script>
+  <script src="js/rostro.js"></script>
 </body>
 </html>

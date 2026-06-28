@@ -17,3 +17,8 @@ transformers
 librosa
 soundfile
 numpy
+# Módulo de rostro (imagen)
+py-feat>=2.0.2
+scikit-learn>=1.3
+joblib>=1.3
+pandas>=2.0
