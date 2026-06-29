@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PIA — Predicción de Emociones por Texto</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #2f81f7;
+      --accent-hover: #1f6feb;
+      --bar: #238636;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+    .container { max-width: 540px; margin: 0 auto; padding: 48px 20px; }
+    header { margin-bottom: 28px; text-align: center; }
+    h1 { font-size: 1.6rem; font-weight: 600; }
+    .sub { color: #8b949e; font-size: 0.95rem; margin-top: 6px; }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    textarea {
+      display: block;
+      width: 100%;
+      background: #0d1117;
+      border: 1px dashed #30363d;
+      border-radius: 8px;
+      color: #e6edf3;
+      font-family: inherit;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      padding: 12px 14px;
+      resize: vertical;
+      min-height: 110px;
+    }
+    textarea:focus { outline: none; border-color: #2f81f7; border-style: solid; }
+    textarea::placeholder { color: #8b949e; }
+    .char-count { text-align: right; font-size: 0.78rem; color: #8b949e; margin-top: 8px; }
+    .actions { display: flex; gap: 10px; margin-top: 18px; }
+    button {
+      flex: 1;
+      padding: 11px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: #fff;
+      background: #2f81f7;
+      cursor: pointer;
+    }
+    button:hover:not(:disabled) { background: #1f6feb; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.secondary { background: transparent; border: 1px solid #30363d; color: #e6edf3; }
+    button.secondary:hover:not(:disabled) { background: #21262d; }
+    .status { color: #8b949e; font-size: 0.95rem; text-align: center; padding: 8px 0; }
+    .status.error { color: #f85149; }
+    .top-emotion { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
+    #emojiBig { font-size: 2.8rem; line-height: 1; }
+    .emotion-name { font-size: 1.5rem; font-weight: 600; text-transform: capitalize; }
+    .confidence { color: #8b949e; font-size: 0.9rem; margin-top: 4px; }
+    .ranking { display: flex; flex-direction: column; gap: 10px; }
+    .rank-row { display: grid; grid-template-columns: 100px 1fr 48px; align-items: center; gap: 10px; font-size: 0.85rem; }
+    .rank-label { color: #8b949e; text-transform: capitalize; }
+    .rank-track { display: block; background: #21262d; border-radius: 4px; height: 8px; overflow: hidden; }
+    .rank-fill { display: block; background: #238636; height: 100%; border-radius: 4px; }
+    .rank-pct { color: #8b949e; text-align: right; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>PIA · Emoción por Texto</h1>
+      <p class="sub">Escribe un texto y el modelo predice la emoción.</p>
+    </header>
+
+    <section class="card">
+      <textarea id="textoInput" placeholder="Escribe aquí lo que quieres analizar… (Ctrl+Enter para predecir)" maxlength="2000"></textarea>
+      <div class="char-count"><span id="charCount">0</span> / 2000</div>
+      <div class="actions">
+        <button id="predictBtn" disabled>Predecir emoción</button>
+        <button id="clearBtn" class="secondary">Limpiar</button>
+      </div>
+    </section>
+
+    <section class="card" id="resultCard" style="display:none">
+      <div id="status" class="status"></div>
+      <div id="resultBody" style="display:none">
+        <div class="top-emotion">
+          <span id="emojiBig"></span>
+          <div>
+            <div id="emotionName" class="emotion-name"></div>
+            <div id="confidenceEl" class="confidence"></div>
+          </div>
+        </div>
+        <div id="ranking" class="ranking"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    var API = "http://localhost:8000";
+    var EMOJIS = { others:"😐", joy:"😄", sadness:"😢", anger:"😠", fear:"😨", disgust:"🤢", surprise:"😲" };
+
+    var textoInput   = document.getElementById("textoInput");
+    var charCount    = document.getElementById("charCount");
+    var predictBtn   = document.getElementById("predictBtn");
+    var clearBtn     = document.getElementById("clearBtn");
+    var resultCard   = document.getElementById("resultCard");
+    var statusEl     = document.getElementById("status");
+    var resultBody   = document.getElementById("resultBody");
+    var emojiBig     = document.getElementById("emojiBig");
+    var emotionName  = document.getElementById("emotionName");
+    var confidenceEl = document.getElementById("confidenceEl");
+    var rankingEl    = document.getElementById("ranking");
+
+    textoInput.oninput = function () {
+      var len = textoInput.value.length;
+      charCount.textContent = len;
+      predictBtn.disabled = (len === 0);
+    };
+
+    clearBtn.onclick = function () {
+      textoInput.value = "";
+      charCount.textContent = "0";
+      predictBtn.disabled = true;
+      resultCard.style.display = "none";
+    };
+
+    predictBtn.onclick = function () {
+      var texto = textoInput.value.trim();
+      if (texto.length > 0) enviar(texto);
+    };
+
+    textoInput.onkeydown = function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        var texto = textoInput.value.trim();
+        if (texto.length > 0) enviar(texto);
+      }
+    };
+
+    function enviar(texto) {
+      mostrarEstado("Analizando texto…", false);
+      predictBtn.disabled = true;
+      clearBtn.disabled = true;
+      fetch(API + "/predecir", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ texto: texto }),
+      })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          if (!res.ok) throw new Error(data.detail || "Error en el servidor");
+          return data;
+        });
+      })
+      .then(function (data) { mostrarResultado(data); })
+      .catch(function (err) { mostrarEstado("⚠️ " + err.message, true); })
+      .finally(function () {
+        predictBtn.disabled = (textoInput.value.trim().length === 0);
+        clearBtn.disabled = false;
+      });
+    }
+
+    function mostrarEstado(texto, esError) {
+      resultCard.style.display = "block";
+      resultBody.style.display = "none";
+      statusEl.style.display = "block";
+      statusEl.textContent = texto;
+      statusEl.className = "status" + (esError ? " error" : "");
+    }
+
+    function mostrarResultado(data) {
+      resultCard.style.display = "block";
+      statusEl.style.display = "none";
+      resultBody.style.display = "block";
+      emojiBig.textContent = EMOJIS[data.emocion] || "🙂";
+      emotionName.textContent = data.emocion_es || data.emocion;
+      confidenceEl.textContent = "Confianza: " + (data.confianza * 100).toFixed(1) + "%";
+      rankingEl.innerHTML = "";
+      for (var i = 0; i < data.ranking.length; i++) {
+        var emocion = data.ranking[i][0];
+        var prob    = data.ranking[i][1];
+        var pct     = (prob * 100).toFixed(1);
+        var row     = document.createElement("div");
+        row.className = "rank-row";
+        row.innerHTML =
+          '<span class="rank-label">' + (EMOJIS[emocion] || "") + " " + emocion + "</span>" +
+          '<span class="rank-track"><span class="rank-fill" style="width:' + pct + '%"></span></span>' +
+          '<span class="rank-pct">' + pct + "%</span>";
+        rankingEl.appendChild(row);
+      }
+    }
+  </script>
+</body>
+</html>
