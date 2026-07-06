@@ -56,8 +56,9 @@ Thumbs.db
 dataset/
 
 # ==========================================
-# Modelo de rostro (pesa ~250 MB, supera el límite de 100 MB de GitHub).
-# No se versiona: cada quien lo coloca en backend/models/ tras clonar.
-# Ver README → "Módulo de Rostro".
+# Modelos pesados (superan el límite de 100 MB de GitHub). No se versionan:
+# cada quien los coloca en su carpeta dentro de backend/models/ tras clonar.
+# Ver README → "Modelos".
 # ==========================================
-backend/models/clasificador_rostro.joblib
+backend/models/rostro/clasificador_rostro.joblib
+backend/models/texto/beto_emoevent_best.pth

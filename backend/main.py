@@ -10,9 +10,13 @@ from pydantic import BaseModel
 from models.src.inferencia import Predictor
 from preprocessing import preprocesar
 
-CHECKPOINT = Path(__file__).parent / "models" / "clasificador_voz.pt"
-CHECKPOINT_ROSTRO = Path(__file__).parent / "models" / "clasificador_rostro.joblib"
-CHECKPOINT_TEXTO = Path(__file__).parent / "models" / "beto_emoevent_best.pth"
+# Cada modelo vive en su propia carpeta dentro de models/ (voz, rostro, texto).
+# Para cambiar un modelo por otro mejor/peor entrenado, reemplaza el archivo
+# correspondiente sin tocar este código (ver README → "Modelos").
+MODELS_DIR = Path(__file__).parent / "models"
+CHECKPOINT = MODELS_DIR / "voz" / "clasificador_voz.pt"
+CHECKPOINT_ROSTRO = MODELS_DIR / "rostro" / "clasificador_rostro.joblib"
+CHECKPOINT_TEXTO = MODELS_DIR / "texto" / "beto_emoevent_best.pth"
 
 # Audio fijo para pruebas: Actor_01, emoción joy (03)
 TEST_AUDIO = Path(__file__).parent.parent / "dataset" / "Actor_01" / "03-01-03-01-01-01-01.wav"

@@ -97,7 +97,7 @@ def main():
     parser.add_argument(
         "--salida",
         type=Path,
-        default=aqui.parent / "models" / "clasificador_rostro.joblib",
+        default=aqui.parent / "models" / "rostro" / "clasificador_rostro.joblib",
     )
     args = parser.parse_args()
 

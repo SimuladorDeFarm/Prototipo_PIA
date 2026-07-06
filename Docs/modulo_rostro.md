@@ -15,7 +15,7 @@ Pipeline detallado de validación e inferencia: ver [pipeline_rostro.md](pipelin
 ## El contrato del modelo (lo importante)
 
 El modelo **no** se guarda como un objeto "pelado". Se guarda como un **bundle
-autodescriptivo** (`backend/models/clasificador_rostro.joblib`): un `dict` que
+autodescriptivo** (`backend/models/rostro/clasificador_rostro.joblib`): un `dict` que
 contiene tanto el modelo como el contrato que el backend necesita para usarlo.
 
 ```python
@@ -59,7 +59,7 @@ El entrenamiento parte del CSV de features ya extraídos por Py-Feat
 python backend/training/entrenar_rostro.py --csv ruta/al/pyfeat_features_v5.csv
 ```
 
-Esto regenera `backend/models/clasificador_rostro.joblib` (el bundle) y
+Esto regenera `backend/models/rostro/clasificador_rostro.joblib` (el bundle) y
 `clasificador_rostro_meta.json` (metadatos legibles). Reinicia el backend y listo.
 
 Para usar **otro algoritmo**, cambia el estimador en `entrenar_rostro.py` (la sección

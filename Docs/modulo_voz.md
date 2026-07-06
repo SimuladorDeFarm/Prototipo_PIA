@@ -163,7 +163,8 @@ backend/
 ├── preprocessing.py               ← pipeline de audio pasos 1-5
 ├── requirements.txt
 └── models/
-    ├── clasificador_voz.pt        ← checkpoint del modelo (pesos entrenados)
+    ├── voz/
+    │   └── clasificador_voz.pt    ← checkpoint del modelo (pesos entrenados)
     └── src/
         ├── config.py              ← constantes del pipeline
         ├── modelo.py              ← carga HuBERT congelado

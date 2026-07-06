@@ -10,8 +10,14 @@ Sistema de inteligencia artificial para predecir emociones a partir de señales 
 frontend/          ← Vanilla HTML/CSS/JS (sin frameworks)
 backend/           ← FastAPI (Python)
   main.py          ← punto de entrada de la API (actualmente esqueleto)
-  models/
-    clasificador_voz.pt        ← checkpoint del modelo entrenado
+  models/                      ← un subdirectorio por módulo (modular)
+    voz/
+      clasificador_voz.pt      ← checkpoint del modelo de voz
+    rostro/
+      clasificador_rostro.joblib       ← bundle del modelo de rostro
+      clasificador_rostro_meta.json    ← metadatos (opcional)
+    texto/
+      beto_emoevent_best.pth   ← checkpoint del modelo de texto
     src/
       config.py        ← todas las constantes y rutas del pipeline
       modelo.py        ← carga HuBERT congelado (extractor de embeddings)
@@ -28,9 +34,9 @@ Docs/
 
 | Módulo | Estado | Checkpoint |
 |---|---|---|
-| Voz | Entrenado con fine-tuning | `backend/models/clasificador_voz.pt` |
-| Texto | Entrenado | pendiente integrar |
-| Rostro | Entrenado | pendiente integrar |
+| Voz | Entrenado con fine-tuning | `backend/models/voz/clasificador_voz.pt` |
+| Texto | Entrenado | `backend/models/texto/beto_emoevent_best.pth` |
+| Rostro | Entrenado | `backend/models/rostro/clasificador_rostro.joblib` (+ `clasificador_rostro_meta.json`) |
 
 ## Pipeline de inferencia de voz
 
@@ -60,7 +66,7 @@ Ver también [backend/models/src/guia_archivos_inferencia.md](backend/models/src
 ```python
 from backend.models.src.inferencia import Predictor
 
-predictor = Predictor(ruta_checkpoint="backend/models/clasificador_voz.pt")
+predictor = Predictor(ruta_checkpoint="backend/models/voz/clasificador_voz.pt")
 resultado = predictor.predecir("audio_preprocesado.wav")
 # {
 #   "emocion": "joy",
