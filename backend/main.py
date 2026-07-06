@@ -5,23 +5,26 @@ from pathlib import Path
 import soundfile as sf
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from models.src.inferencia import Predictor
 from preprocessing import preprocesar
 
 CHECKPOINT = Path(__file__).parent / "models" / "clasificador_voz.pt"
 CHECKPOINT_ROSTRO = Path(__file__).parent / "models" / "clasificador_rostro.joblib"
+CHECKPOINT_TEXTO = Path(__file__).parent / "models" / "beto_emoevent_best.pth"
 
 # Audio fijo para pruebas: Actor_01, emoción joy (03)
 TEST_AUDIO = Path(__file__).parent.parent / "dataset" / "Actor_01" / "03-01-03-01-01-01-01.wav"
 
 _predictor: Predictor | None = None
 _predictor_rostro = None  # PredictorRostro | None (import perezoso: py-feat es pesado)
+_predictor_texto = None   # PredictorTexto | None (import perezoso: transformers/BETO)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _predictor, _predictor_rostro
+    global _predictor, _predictor_rostro, _predictor_texto
     print("Cargando modelos...")
     _predictor = Predictor(ruta_checkpoint=CHECKPOINT)
 
@@ -35,10 +38,20 @@ async def lifespan(app: FastAPI):
         _predictor_rostro = None
         print(f"[aviso] Módulo de rostro no disponible: {e}")
 
+    # El módulo de texto también es opcional, mismo criterio.
+    try:
+        from models.src.inferencia_texto import PredictorTexto
+        _predictor_texto = PredictorTexto(ruta_checkpoint=CHECKPOINT_TEXTO)
+        print("Modelo de texto listo.")
+    except Exception as e:
+        _predictor_texto = None
+        print(f"[aviso] Módulo de texto no disponible: {e}")
+
     print("Modelos listos.")
     yield
     _predictor = None
     _predictor_rostro = None
+    _predictor_texto = None
 
 
 app = FastAPI(title="PIA — Predicción de Emociones", lifespan=lifespan)
@@ -115,9 +128,31 @@ async def predecir_rostro(imagen: UploadFile = File(...)):
     return resultado
 
 
+class TextoInput(BaseModel):
+    texto: str
+
+
+@app.post("/predecir_texto")
+async def predecir_texto(payload: TextoInput):
+    """Recibe un texto y devuelve la emoción predicha."""
+    if _predictor_texto is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Módulo de texto no disponible (dependencias faltantes o sin modelo).",
+        )
+    if not payload.texto or not payload.texto.strip():
+        raise HTTPException(status_code=422, detail="El texto no puede estar vacío.")
+
+    resultado = _predictor_texto.predecir(payload.texto)
+    resultado["ranking"] = [list(par) for par in resultado["ranking"]]
+    return resultado
+
+
 @app.get("/")
 def home():
     endpoints = ["/predecir (POST)", "/test (GET)"]
     if _predictor_rostro is not None:
         endpoints.append("/predecir_rostro (POST)")
+    if _predictor_texto is not None:
+        endpoints.append("/predecir_texto (POST)")
     return {"estado": "activo", "endpoints": endpoints}

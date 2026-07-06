@@ -9,7 +9,7 @@ pythonenv/
 dist/
 build/
 *.egg-info/
-
+models/
 # ==========================================
 # Archivos de Configuración y Secretos (¡CRÍTICO!)
 # ==========================================

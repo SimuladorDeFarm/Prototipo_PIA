@@ -10,7 +10,7 @@
   <main class="container wide">
     <header>
       <h1>PIA · Predicción de Emociones</h1>
-      <p class="sub">Analiza la emoción por voz o por rostro.</p>
+      <p class="sub">Analiza la emoción por voz, rostro o texto.</p>
     </header>
 
     <div class="modules">
@@ -90,10 +90,40 @@
           </div>
         </section>
       </div>
+
+      <!-- ===================== MÓDULO TEXTO ===================== -->
+      <div class="module">
+        <h2 class="module-title">✍️ Emoción por Texto</h2>
+
+        <section class="card">
+          <textarea id="textoInput" placeholder="Escribe aquí lo que quieres analizar… (Ctrl+Enter para predecir)" maxlength="2000"></textarea>
+          <div class="char-count"><span id="charCount">0</span> / 2000</div>
+
+          <div class="actions">
+            <button id="predictBtnT" disabled>Predecir emoción</button>
+            <button id="clearBtnT" class="secondary">Limpiar</button>
+          </div>
+        </section>
+
+        <section class="card result" id="resultCardT" hidden>
+          <div id="statusT" class="status"></div>
+          <div id="resultBodyT" hidden>
+            <div class="top-emotion">
+              <span id="emojiBigT"></span>
+              <div>
+                <div id="emotionNameT" class="emotion-name"></div>
+                <div id="confidenceT" class="confidence"></div>
+              </div>
+            </div>
+            <div id="rankingT" class="ranking"></div>
+          </div>
+        </section>
+      </div>
     </div>
   </main>
 
   <script src="js/app.js"></script>
   <script src="js/rostro.js"></script>
+  <script src="js/texto.js"></script>
 </body>
 </html>

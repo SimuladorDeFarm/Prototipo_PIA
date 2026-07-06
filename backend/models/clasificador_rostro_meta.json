@@ -36,21 +36,26 @@
   "umbral_facescore": 0.9,
   "pose_max_grados": 45.0,
   "formato_artefacto": "bundle joblib: {modelo, features, clases, umbral_facescore, pose_max_grados, version}",
+  "version": "rostro-v6",
   "hiperparametros": {
-    "n_estimators": 300,
+    "n_estimators": 600,
+    "max_depth": null,
+    "min_samples_leaf": 1,
+    "min_samples_split": 2,
     "max_features": "sqrt",
-    "criterion": "gini",
+    "criterion": "entropy",
     "bootstrap": true,
     "class_weight": "balanced",
     "random_state": 42
   },
   "entrenamiento": {
-    "particiones": [
-      "Train",
-      "Train_balanced"
-    ],
-    "n_train": 13528,
-    "n_test": 13168,
-    "csv": "pyfeat_features_v5.csv"
+    "split": {
+      "ratios": [0.7, 0.15, 0.15],
+      "seed": 42
+    },
+    "n_train": 18639,
+    "val_accuracy": 0.5108886107634543,
+    "val_f1_macro": 0.4732756313012638,
+    "generado": "2026-06-27 23:09:41"
   }
 }
