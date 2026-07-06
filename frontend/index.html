@@ -120,10 +120,42 @@
         </section>
       </div>
     </div>
+
+    <!-- ===================== FUSIÓN MULTIMODAL ===================== -->
+    <section class="fusion">
+      <h2 class="module-title">🔮 Fusión multimodal</h2>
+      <div class="fusion-grid">
+        <div class="card fusion-launch">
+          <p class="fusion-hint">
+            Combina voz, rostro y texto en una sola predicción (voto suave ponderado).
+            Usa las entradas que ya cargaste en los módulos de arriba; las que falten se omiten.
+          </p>
+          <div class="actions">
+            <button id="fusionBtn">🚀 Lanzar los 3 modelos</button>
+          </div>
+        </div>
+
+        <section class="card result" id="resultCardF" hidden>
+          <div id="statusF" class="status"></div>
+          <div id="resultBodyF" hidden>
+            <div class="top-emotion">
+              <span id="emojiBigF"></span>
+              <div>
+                <div id="emotionNameF" class="emotion-name"></div>
+                <div id="confidenceF" class="confidence"></div>
+              </div>
+            </div>
+            <div id="modalidadesF" class="modalidades"></div>
+            <div id="rankingF" class="ranking"></div>
+          </div>
+        </section>
+      </div>
+    </section>
   </main>
 
   <script src="js/app.js"></script>
   <script src="js/rostro.js"></script>
   <script src="js/texto.js"></script>
+  <script src="js/fusion.js"></script>
 </body>
 </html>

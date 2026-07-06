@@ -5,6 +5,8 @@ Prototipo que predice la emoción a partir de **voz** (archivo o grabación) o d
 miedo, disgusto y sorpresa. Incluye una API en FastAPI y un frontend web en vanilla JS
 con los dos módulos lado a lado.
 
+![Interfaz web de PIA con los módulos de voz, rostro y texto](2026-07-06_16-18.png)
+
 - **Voz:** HuBERT fine-tuneado + cabeza clasificadora (`models/voz/clasificador_voz.pt`).
 - **Rostro:** Py-Feat (Action Units) + Random Forest (`models/rostro/clasificador_rostro.joblib`).
 - **Texto:** BETO fine-tuneado en EmoEvent (`models/texto/beto_emoevent_best.pth`).
