@@ -1,96 +1,85 @@
-# PIA — Prototipo Multimodal de Predicción de Emociones
+# PIA — Prototipo Multimodal de Prediccion de Emociones
 
-## Qué es este proyecto
+## Que es este proyecto
 
-Sistema de inteligencia artificial para predecir emociones a partir de señales multimodales (voz, texto, rostro). El objetivo actual es un prototipo funcional que recibe un archivo de audio y devuelve la emoción predicha. Los módulos de texto y rostro se integrarán en iteraciones posteriores.
+Sistema de inteligencia artificial para predecir emociones a partir de senales multimodales (voz, texto, rostro). Recibe audio, imagen o texto y devuelve la emocion predicha sobre 7 clases.
 
 ## Arquitectura
 
 ```
 frontend/          ← Vanilla HTML/CSS/JS (sin frameworks)
 backend/           ← FastAPI (Python)
-  main.py          ← punto de entrada de la API (actualmente esqueleto)
-  models/                      ← un subdirectorio por módulo (modular)
+  main.py          ← punto de entrada de la API
+  preprocessing.py ← pipeline de audio (mono, 16kHz, RMS, trim)
+  models/
     voz/
-      clasificador_voz.pt      ← checkpoint del modelo de voz
+      clasificador_voz_v4.pt      ← HuBERT fine-tuned v4 (state_dict completo)
     rostro/
-      clasificador_rostro.joblib       ← bundle del modelo de rostro
-      clasificador_rostro_meta.json    ← metadatos (opcional)
+      mejor_modelo_v2.pt          ← EfficientNet-B0 v2 (state_dict)
+      face_detection_yunet_2023mar.onnx  ← detector facial (se descarga solo)
     texto/
-      beto_emoevent_best.pth   ← checkpoint del modelo de texto
+      clasificador_texto_v4.pt    ← BETO fine-tuned v4 (state_dict)
     src/
-      config.py        ← todas las constantes y rutas del pipeline
-      modelo.py        ← carga HuBERT congelado (extractor de embeddings)
-      embeddings.py    ← carga audio + extrae embedding [768]
-      clasificador.py  ← arquitectura CabezaEmocion (CRÍTICO: no modificar)
-      inferencia.py    ← clase Predictor, punto de entrada de alto nivel
+      inferencia.py        ← Predictor de voz (HuBERTEmotionModel integrado)
+      inferencia_rostro.py ← PredictorRostro (EfficientNet-B0 + YuNet)
+      inferencia_texto.py  ← PredictorTexto (BETO + AutoModelForSequenceClassification)
 Docs/
-  pipeline_audio.md  ← preprocesamiento completo de audio para inferencia web
-  pipeline_rostro.md ← pipeline del módulo de rostro (pendiente integrar)
-  pipeline_texto.md  ← pipeline del módulo de texto (pendiente integrar)
+  modulo_voz.md
+  modulo_rostro.md
+  pipeline_audio.md
+  pipeline_rostro.md
+  pipeline_texto.md
 ```
 
 ## Modelos disponibles
 
-| Módulo | Estado | Checkpoint |
-|---|---|---|
-| Voz | Entrenado con fine-tuning | `backend/models/voz/clasificador_voz.pt` |
-| Texto | Entrenado | `backend/models/texto/beto_emoevent_best.pth` |
-| Rostro | Entrenado | `backend/models/rostro/clasificador_rostro.joblib` (+ `clasificador_rostro_meta.json`) |
+| Modulo | Arquitectura | Checkpoint | F1 test |
+|---|---|---|---|
+| Voz | HuBERT (4 capas descongeladas) + cabeza 768→512→128→7 | `clasificador_voz_v4.pt` | ~0.744 |
+| Rostro | EfficientNet-B0 + cabeza 1280→512→128→7 | `mejor_modelo_v2.pt` | ~0.640 |
+| Texto | BETO full fine-tune + Focal Loss | `clasificador_texto_v4.pt` | ~0.166 |
 
 ## Pipeline de inferencia de voz
 
-El flujo completo está documentado en [Docs/pipeline_audio.md](Docs/pipeline_audio.md). Resumen:
-
 1. Decodificar audio a PCM float32
-2. Convertir a mono (promedio de canales)
+2. Convertir a mono
 3. Resamplear a 16 000 Hz
-4. Normalizar RMS a `TARGET_RMS = 0.1`
-5. Recortar silencio de inicio y fin (`TRIM_TOP_DB = 30 dB`)
-6. Forward pass por HuBERT (`facebook/hubert-base-ls960`) + mean pooling → vector [768]
-7. Cabeza clasificadora → softmax → 7 probabilidades
+4. Normalizar RMS a 0.1
+5. Recortar silencio (TRIM_TOP_DB = 30 dB)
+6. Pad/truncar a 48000 muestras (3s)
+7. Forward pass por HuBERTEmotionModel (HuBERT + cabeza integrados) → softmax → 7 probabilidades
 
-Emociones de salida: `neutral`, `joy`, `sadness`, `anger`, `fear`, `disgust`, `surprise`.
+## Pipeline de inferencia de rostro
 
-## Reglas de integración del modelo
+1. Decodificar imagen (JPEG/PNG)
+2. Detectar cara con YuNet (umbral 0.5)
+3. Recortar cara con 20% de margen (fallback: imagen completa si no detecta)
+4. Resize a 224x224
+5. Normalizar con media/std de ImageNet
+6. Forward pass por EfficientNet-B0 → softmax → 7 probabilidades
 
-- **`CabezaEmocion` en `clasificador.py` no se modifica.** La arquitectura exacta (Dropout → Linear(768→256) → ReLU → Dropout → Linear(256→7)) debe coincidir con los pesos guardados en el `.pt`. Cambiarla rompe `load_state_dict`.
-- **HuBERT se carga una sola vez al arrancar el servidor**, no por petición. El modelo pesa ~360 MB.
-- **Mean pooling es obligatorio.** El clasificador fue entrenado con embeddings producidos por `last_hidden_state.mean(dim=1)`. Cambiar la operación de pooling produce predicciones incorrectas.
-- El checkpoint es autosuficiente: contiene la arquitectura (`embedding_dim`, `hidden_dim`, `dropout`, `emociones`) además de los pesos.
+## Pipeline de inferencia de texto
 
-Ver también [backend/models/src/guia_archivos_inferencia.md](backend/models/src/guia_archivos_inferencia.md) para detalles de cada módulo de `src/`.
+1. Tokenizar con BETO cased (max_length=128, padding="max_length")
+2. Forward pass por AutoModelForSequenceClassification → softmax → 7 probabilidades
 
-## Cómo usar `Predictor` (clase de conveniencia)
+## Reglas de integracion
 
-```python
-from backend.models.src.inferencia import Predictor
-
-predictor = Predictor(ruta_checkpoint="backend/models/voz/clasificador_voz.pt")
-resultado = predictor.predecir("audio_preprocesado.wav")
-# {
-#   "emocion": "joy",
-#   "emocion_es": "felicidad",
-#   "confianza": 0.87,
-#   "ranking": [("joy", 0.87), ("neutral", 0.06), ...]
-# }
-```
-
-**Limitación:** `predecir()` asume que el audio ya está a 16 kHz. Para inferencia web hay que ejecutar los pasos 1–5 del pipeline antes de llamar al modelo, o modificar `predecir()` para aceptar un waveform en memoria.
+- **Los checkpoints guardan `state_dict()`**, no objetos completos. Cada modulo de inferencia reconstruye la arquitectura y carga los pesos.
+- **HuBERT y BETO se descargan de HuggingFace** la primera vez y se cachean en `~/.cache/huggingface/`.
+- **YuNet se descarga automaticamente** (~230KB) la primera vez que se usa el modulo de rostro.
+- Los tres modulos son **independientes**: si falta un checkpoint, ese modulo queda deshabilitado (503) pero los demas funcionan.
 
 ## Levantar el backend
 
 ```bash
 cd backend
-uv run fastapi dev main.py
-# o con uvicorn directamente:
-uv run uvicorn main:app --reload
+.venv\Scripts\Activate.ps1
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
-
-Requiere Python gestionado por `uv` (ver `.python-version`). Dependencias en `requirements.txt`.
 
 ## Estado actual
 
-- `backend/main.py` es un esqueleto vacío con un único endpoint GET `/`. La integración del modelo de voz aún no está implementada.
-- El frontend (`frontend/index.html`) existe pero no tiene lógica conectada al backend todavía.
-- El prototipo funcional a construir: endpoint POST en FastAPI que reciba un `.wav`, ejecute el pipeline completo y devuelva la emoción predicha; frontend que suba el archivo y muestre el resultado.
+- Los tres modulos (voz, rostro, texto) estan integrados y funcionales.
+- La fusion multimodal combina predicciones por voto suave ponderado por F1.
+- El frontend muestra los tres modulos lado a lado con la fusion al final.

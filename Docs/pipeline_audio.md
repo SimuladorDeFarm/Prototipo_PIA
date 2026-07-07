@@ -312,96 +312,58 @@ if len(data) / SAMPLE_RATE_TARGET < MIN_DURACION_S:
 
 ---
 
-## 8. Paso 6 — Extracción del embedding (HuBERT)
+## 8. Paso 6 — Pad/truncar + Forward pass (HuBERTEmotionModel v4)
 
 ### Qué hace
-Pasar el waveform preprocesado por el modelo HuBERT congelado y obtener un
-único vector de 768 dimensiones que representa el contenido emocional del clip.
+Ajustar la longitud del waveform a 48000 muestras (3 segundos a 16kHz) y
+pasarlo por el modelo integrado HuBERTEmotionModel, que combina HuBERT
+(4 capas descongeladas) + cabeza clasificadora en un solo forward pass.
 
 ### Componentes
 
 | Componente | Detalle |
 |---|---|
-| **Modelo** | `facebook/hubert-base-ls960` (HuBERT base, LibriSpeech 960h) |
-| **Estado** | Completamente congelado (`requires_grad=False`, `model.eval()`) |
-| **Librería** | `transformers.HubertModel` de HuggingFace |
+| **Modelo** | `HuBERTEmotionModel` (HuBERT + cabeza integrados) |
+| **HuBERT** | `facebook/hubert-base-ls960`, 4 últimas capas descongeladas |
+| **Cabeza** | 768→512 (BN+ReLU) →128 (ReLU) →7 |
 | **Pooling** | Mean pooling sobre la dimensión temporal de la última capa oculta |
-| **Salida** | Vector `float32` de dimensión `768` |
+| **Entrada** | Tensor float32 de shape `[1, 48000]` |
+| **Salida** | 7 logits → softmax → probabilidades |
 
 ### Cómo implementarlo
 
 ```python
+import numpy as np
 import torch
-from transformers import HubertModel
+import torch.nn.functional as F
 
-# Cargar y congelar HuBERT (hacerlo UNA sola vez al iniciar el servidor)
-hubert = HubertModel.from_pretrained("facebook/hubert-base-ls960")
-for p in hubert.parameters():
-    p.requires_grad = False
-hubert.eval()
-hubert.to(dispositivo)
+MAX_LEN_SAMPLES = 48000  # 3 segundos a 16kHz
 
-@torch.no_grad()
-def extraer_embedding(waveform: np.ndarray) -> np.ndarray:
-    """waveform: array float32 1D a 16 kHz, ya preprocesado.
-       Devuelve: array float32 shape (768,).
-    """
-    entrada = torch.from_numpy(waveform).unsqueeze(0).to(dispositivo)  # [1, T]
-    salida  = hubert(entrada).last_hidden_state                         # [1, F, 768]
-    emb     = salida.mean(dim=1).squeeze(0)                             # [768]
-    return emb.cpu().numpy().astype(np.float32)
+# Pad o truncar
+if len(wav) > MAX_LEN_SAMPLES:
+    wav = wav[:MAX_LEN_SAMPLES]
+elif len(wav) < MAX_LEN_SAMPLES:
+    wav = np.pad(wav, (0, MAX_LEN_SAMPLES - len(wav)), mode="constant")
+
+# Forward pass
+tensor = torch.from_numpy(wav).unsqueeze(0).to(dispositivo)  # [1, 48000]
+logits = modelo(tensor)  # [1, 7]
+probs = F.softmax(logits, dim=1).squeeze(0).cpu().numpy()  # [7]
 ```
 
 **Puntos críticos:**
 
-- HuBERT se carga una sola vez cuando el servidor arranca, **no en cada petición**.
-  Cargarlo por petición es inviable en producción (el modelo pesa ~360 MB y tarda
-  varios segundos en inicializar).
-- El `@torch.no_grad()` es obligatorio para inferencia: sin él, PyTorch acumula
-  gradientes innecesarios, multiplicando el uso de memoria.
-- El tensor de entrada tiene shape `[1, T]` (batch de 1, T muestras). No hay
-  padding ni truncado: el clip completo se procesa en un solo forward pass.
+- El modelo se carga una sola vez cuando el servidor arranca, **no en cada petición**.
+  Incluye HuBERT (~360 MB) y la cabeza, todo integrado.
+- El pad/truncar a longitud fija es necesario porque el modelo v4 fue entrenado
+  con batches de longitud fija (48000 muestras).
+- El `@torch.no_grad()` es obligatorio para inferencia.
 
 ---
 
-## 9. Paso 7 — Clasificación de emoción
-
-### Qué hace
-Tomar el vector de 768 dimensiones y producir una distribución de probabilidad
-sobre las 7 emociones de la taxonomía unificada.
-
-### Arquitectura de la cabeza clasificadora
-
-```
-entrada [768]
-    │
-    ▼
-Dropout(p=0.3)
-    │
-    ▼
-Linear(768 → 256) + ReLU
-    │
-    ▼
-Dropout(p=0.3)
-    │
-    ▼
-Linear(256 → 7)   ← logits
-    │
-    ▼
-Softmax(dim=1)    ← probabilidades
-```
-
-| Parámetro | Valor |
-|---|---|
-| `dim_entrada` | 768 |
-| `dim_oculta` | 256 |
-| `dropout` | 0.3 |
-| `num_clases` | 7 |
+## 9. Paso 7 — Interpretación de la salida
 
 ### Taxonomía de salida (orden fijo)
-
-El índice de clase es relevante porque el checkpoint guarda los pesos ordenados
-según esta tabla. **No alterar el orden.**
 
 | Índice | Etiqueta interna | Nombre en español |
 |---|---|---|
@@ -413,39 +375,7 @@ según esta tabla. **No alterar el orden.**
 | 5 | `disgust` | Disgusto |
 | 6 | `surprise` | Sorpresa |
 
-### Cómo implementarlo
-
-```python
-import torch
-import torch.nn.functional as F
-
-@torch.no_grad()
-def clasificar(embedding: np.ndarray, cabeza, dispositivo) -> dict:
-    """embedding: array float32 shape (768,).
-       Devuelve dict con emoción predicha y ranking completo.
-    """
-    EMOCIONES = ["neutral", "joy", "sadness", "anger", "fear", "disgust", "surprise"]
-    NOMBRES_ES = {
-        "neutral": "neutral", "joy": "felicidad", "sadness": "tristeza",
-        "anger": "enojo",     "fear": "miedo",    "disgust": "disgusto",
-        "surprise": "sorpresa",
-    }
-
-    x     = torch.from_numpy(embedding).unsqueeze(0).to(dispositivo)  # [1, 768]
-    probs = F.softmax(cabeza(x), dim=1).squeeze(0).cpu().numpy()       # [7]
-
-    ranking = sorted(
-        [(EMOCIONES[i], float(probs[i])) for i in range(len(EMOCIONES))],
-        key=lambda t: t[1], reverse=True,
-    )
-    emocion, confianza = ranking[0]
-    return {
-        "emocion":    emocion,
-        "emocion_es": NOMBRES_ES[emocion],
-        "confianza":  confianza,
-        "ranking":    ranking,         # lista de (emocion, prob) de mayor a menor
-    }
-```
+La clase con mayor probabilidad es la emoción predicha.
 
 ---
 
@@ -515,13 +445,13 @@ No cambiarlos sin revisar el impacto en la distribución de entrada al modelo.
 | `HOP_LENGTH` | `512 muestras` | Paso 5 |
 | `TRIM_TOP_DB` | `30.0 dB` | Paso 5 |
 | `MIN_DURACION_S` | `0.5 s` | Paso 5 (validación) |
+| `MAX_LEN_SAMPLES` | `48000` (3s) | Paso 6 |
 | `HUBERT_MODEL_NAME` | `facebook/hubert-base-ls960` | Paso 6 |
 | `EMBEDDING_DIM` | `768` | Paso 6 |
-| `HIDDEN_DIM` | `256` | Paso 7 |
-| `DROPOUT` | `0.3` | Paso 7 |
-| `NUM_CLASSES` | `7` | Paso 7 |
+| `HIDDEN_DIM_1` | `512` (con BatchNorm) | Paso 6 (cabeza) |
+| `HIDDEN_DIM_2` | `128` | Paso 6 (cabeza) |
+| `NUM_CLASSES` | `7` | Paso 6 (cabeza) |
 
 ---
 
-*Documento generado el 2026-06-23 a partir del código fuente de `src/` y del
-contexto de entrenamiento documentado en `CLAUDE.md`.*
+*Documento actualizado el 2026-07-07. Refleja la arquitectura v4 (HuBERTEmotionModel integrado).*

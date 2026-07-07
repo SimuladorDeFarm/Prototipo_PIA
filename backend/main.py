@@ -14,9 +14,9 @@ from preprocessing import preprocesar
 # Para cambiar un modelo por otro mejor/peor entrenado, reemplaza el archivo
 # correspondiente sin tocar este código (ver README → "Modelos").
 MODELS_DIR = Path(__file__).parent / "models"
-CHECKPOINT = MODELS_DIR / "voz" / "clasificador_voz.pt"
-CHECKPOINT_ROSTRO = MODELS_DIR / "rostro" / "clasificador_rostro.joblib"
-CHECKPOINT_TEXTO = MODELS_DIR / "texto" / "beto_emoevent_best.pth"
+CHECKPOINT = MODELS_DIR / "voz" / "clasificador_voz_v4.pt"
+CHECKPOINT_ROSTRO = MODELS_DIR / "rostro" / "mejor_modelo_v2.pt"
+CHECKPOINT_TEXTO = MODELS_DIR / "texto" / "clasificador_texto_v4.pt"
 
 # Audio fijo para pruebas: Actor_01, emoción joy (03)
 TEST_AUDIO = Path(__file__).parent.parent / "dataset" / "Actor_01" / "03-01-03-01-01-01-01.wav"
@@ -36,8 +36,8 @@ async def lifespan(app: FastAPI):
     # modelo entrenado, el backend de voz sigue funcionando igualmente.
     try:
         from models.src.inferencia_rostro import PredictorRostro
-        _predictor_rostro = PredictorRostro(ruta_bundle=CHECKPOINT_ROSTRO)
-        print(f"Modelo de rostro listo (bundle {_predictor_rostro.version}).")
+        _predictor_rostro = PredictorRostro(ruta_pesos=CHECKPOINT_ROSTRO)
+        print(f"Modelo de rostro listo ({_predictor_rostro.version}).")
     except Exception as e:
         _predictor_rostro = None
         print(f"[aviso] Módulo de rostro no disponible: {e}")
@@ -87,7 +87,12 @@ async def predecir(audio: UploadFile = File(...)):
         waveform = preprocesar(contenido)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    resultado = _inferir(waveform)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en preprocesamiento: {e}")
+    try:
+        resultado = _inferir(waveform)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en inferencia: {e}")
     resultado["ranking"] = [list(par) for par in resultado["ranking"]]
     return resultado
 
@@ -112,21 +117,15 @@ async def predecir_rostro(imagen: UploadFile = File(...)):
     if _predictor_rostro is None:
         raise HTTPException(
             status_code=503,
-            detail="Módulo de rostro no disponible (py-feat no instalado o sin modelo).",
+            detail="Módulo de rostro no disponible (sin modelo o dependencias faltantes).",
         )
     from models.src.inferencia_rostro import RostroNoValido
 
     contenido = await imagen.read()
-    sufijo = Path(imagen.filename or "").suffix or ".jpg"
-    tmp = tempfile.NamedTemporaryFile(suffix=sufijo, delete=False)
     try:
-        tmp.write(contenido)
-        tmp.close()
-        resultado = _predictor_rostro.predecir(tmp.name)
+        resultado = _predictor_rostro.predecir_bytes(contenido)
     except RostroNoValido as e:
         raise HTTPException(status_code=422, detail=str(e))
-    finally:
-        Path(tmp.name).unlink(missing_ok=True)
 
     resultado["ranking"] = [list(par) for par in resultado["ranking"]]
     return resultado

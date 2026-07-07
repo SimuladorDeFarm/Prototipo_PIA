@@ -1,132 +1,87 @@
-# PIA — Predicción de Emociones (Voz + Rostro)
+# PIA — Predicción de Emociones (Voz + Rostro + Texto)
 
-Prototipo que predice la emoción a partir de **voz** (archivo o grabación) o de **rostro**
-(foto subida o captura de cámara), sobre 7 clases: neutral, felicidad, tristeza, enojo,
-miedo, disgusto y sorpresa. Incluye una API en FastAPI y un frontend web en vanilla JS
-con los dos módulos lado a lado.
+Prototipo multimodal que predice la emoción a partir de **voz**, **rostro** o **texto**,
+sobre 7 clases: neutral, felicidad, tristeza, enojo, miedo, disgusto y sorpresa.
+Incluye una API en FastAPI, un frontend web en vanilla JS con los tres módulos lado a lado,
+y una fusión multimodal por voto suave ponderado.
 
 ![Interfaz web de PIA con los módulos de voz, rostro y texto](2026-07-06_16-18.png)
 
-- **Voz:** HuBERT fine-tuneado + cabeza clasificadora (`models/voz/clasificador_voz.pt`).
-- **Rostro:** Py-Feat (Action Units) + Random Forest (`models/rostro/clasificador_rostro.joblib`).
-- **Texto:** BETO fine-tuneado en EmoEvent (`models/texto/beto_emoevent_best.pth`).
+- **Voz:** HuBERT fine-tuned (4 capas descongeladas) + cabeza clasificadora profunda (`models/voz/clasificador_voz_v4.pt`).
+- **Rostro:** EfficientNet-B0 fine-tuned + detección facial YuNet (`models/rostro/mejor_modelo_v2.pt`).
+- **Texto:** BETO fine-tuned con Focal Loss en EMOEvent (`models/texto/clasificador_texto_v4.pt`).
 
-Ambos módulos viven en el mismo backend y devuelven el mismo formato de respuesta.
+Los tres módulos viven en el mismo backend y devuelven el mismo formato de respuesta.
 
 ---
 
 ## Requisitos
 
-- **Python 3.12**
-- ~360 MB de espacio para la caché de HuBERT (módulo de voz, se descarga la 1ª vez)
-- Para el **módulo de rostro**:
-  - Pesos de Py-Feat (se descargan automáticamente la 1ª vez, ~varios cientos de MB)
-  - **FFmpeg** (DLLs *shared*) — necesario en Windows para `py-feat`/`torchcodec` (ver más abajo)
-  - El archivo del modelo `models/rostro/clasificador_rostro.joblib` (no se versiona, ver [Modelos](#modelos))
+- **Python 3.11+**
+- ~360 MB de espacio para la caché de HuBERT (módulo de voz, se descarga la 1a vez)
+- ~440 MB para la caché de BETO (módulo de texto, se descarga la 1a vez)
+- YuNet (~230 KB) se descarga automáticamente la 1a vez (módulo de rostro)
 - Un navegador moderno (para el frontend, micrófono y cámara)
 
 ---
 
-## Instalación
+## Instalacion
 
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+.venv\Scripts\Activate.ps1   # Windows
+# source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 ```
 
-### FFmpeg en Windows (solo para el módulo de rostro)
-
-`py-feat` arrastra `torchcodec`, que necesita las DLLs *shared* de **FFmpeg** (4–8) para
-importarse. En Windows no vienen por defecto. Una vez tras instalar:
-
-1. Descargar un build *shared* de FFmpeg 7 de
-   [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases)
-   (`ffmpeg-n7.1-latest-win64-gpl-shared-7.1.zip`).
-2. Copiar las DLLs de su `bin/` (`avcodec-61.dll`, `avutil-59.dll`, `avformat-61.dll`,
-   `swscale-8.dll`, etc.) dentro del paquete `torchcodec` del venv:
-   `backend/.venv/Lib/site-packages/torchcodec/`.
-
-Verificar: `python -c "from feat import Detectorv1; print('OK')"`.
-
-> Si FFmpeg falta, el backend de **voz sigue funcionando** y el endpoint de rostro
-> responde `503`. Más detalles en [Docs/modulo_rostro.md](Docs/modulo_rostro.md).
-
 ## Modelos
 
-Los modelos están organizados **de forma modular**: cada módulo tiene su propia carpeta
-dentro de `backend/models/`. El código lee cada modelo desde su carpeta, así que para
-**cambiar un modelo por otro mejor (o peor) entrenado basta con reemplazar sus archivos**
-en la carpeta correspondiente, sin tocar el código.
+Los modelos estan organizados de forma modular: cada modulo tiene su propia carpeta
+dentro de `backend/models/`.
 
 ```
 backend/models/
 ├── voz/
-│   └── clasificador_voz.pt              ← módulo de voz
+│   └── clasificador_voz_v4.pt        ← HuBERT fine-tuned v4 (~362 MB)
 ├── rostro/
-│   ├── clasificador_rostro.joblib       ← módulo de rostro (modelo)
-│   └── clasificador_rostro_meta.json    ← módulo de rostro (metadatos, opcional)
+│   ├── mejor_modelo_v2.pt            ← EfficientNet-B0 v2 (~18 MB)
+│   └── face_detection_yunet_2023mar.onnx  ← YuNet (se descarga solo, ~230 KB)
 ├── texto/
-│   └── beto_emoevent_best.pth           ← módulo de texto
-└── src/                                 ← código de inferencia (no tocar)
+│   └── clasificador_texto_v4.pt      ← BETO fine-tuned v4 (~419 MB)
+└── src/                              ← codigo de inferencia
+    ├── inferencia.py                 ← Predictor de voz (HuBERTEmotionModel)
+    ├── inferencia_rostro.py          ← PredictorRostro (EfficientNet-B0 + YuNet)
+    └── inferencia_texto.py           ← PredictorTexto (BETO)
 ```
 
-### Qué archivos necesita cada módulo
+### Que archivo necesita cada modulo
 
-| Módulo | Carpeta | Archivo(s) necesario(s) para inferencia | Formato |
-|---|---|---|---|
-| **Voz** | `backend/models/voz/` | `clasificador_voz.pt` | Checkpoint PyTorch **autosuficiente**: contiene los pesos y la arquitectura (`embedding_dim`, `hidden_dim`, `dropout`, `emociones`). Es lo único que hace falta. |
-| **Rostro** | `backend/models/rostro/` | `clasificador_rostro.joblib` | *Bundle* joblib **autodescriptivo**: `dict` con `modelo`, `features`, `clases`, `umbral_facescore`, `pose_max_grados`, `version`. Es lo único **requerido** para inferencia. |
-| **Rostro** | `backend/models/rostro/` | `clasificador_rostro_meta.json` | Metadatos legibles (features, clases, hiperparámetros, métricas). **Opcional**: el backend no lo lee; solo documenta el modelo. Lo genera el script de entrenamiento junto al `.joblib`. |
-| **Texto** | `backend/models/texto/` | `beto_emoevent_best.pth` | Checkpoint PyTorch con `model_state_dict` y `label2id`. BETO base se descarga solo desde HuggingFace (`dccuchile/bert-base-spanish-wwm-cased`). |
+| Modulo | Checkpoint | Arquitectura | Dataset | F1 test |
+|---|---|---|---|---|
+| **Voz** | `clasificador_voz_v4.pt` | HuBERT (4 capas descongeladas) + cabeza 768→512→128→7 | RAVDESS | ~0.744 |
+| **Rostro** | `mejor_modelo_v2.pt` | EfficientNet-B0 + cabeza 1280→512→128→7 | AffectNet | ~0.640 |
+| **Texto** | `clasificador_texto_v4.pt` | BETO (full fine-tune) + clasificacion 7 clases | EMOEvent (es) | ~0.166 |
 
-> **Importante:** solo debes reemplazar un modelo por **el mismo tipo de modelo** entrenado
-> mejor o peor (p. ej. un `.joblib` nuevo de Random Forest para rostro, o un `.pt` nuevo de
-> la misma cabeza clasificadora para voz). El archivo nuevo debe respetar el formato de la
-> tabla, porque el código de `src/` espera esa estructura. Conserva el **mismo nombre de
-> archivo** en la misma carpeta y reinicia el backend: el cambio se toma automáticamente.
+> **Importante:** los checkpoints `.pt` superan los 100 MB de GitHub y estan en `.gitignore`.
+> Tras clonar, colocalos manualmente en su carpeta o descargalos desde Google Drive.
 
-### Cómo obtener / reemplazar cada modelo
-
-- **Copiar el archivo** que te comparta un compañero (p. ej. si entrenó una versión mejor)
-  en la carpeta indicada arriba, con el mismo nombre.
-- **Reentrenar el de rostro** tú mismo (requiere el CSV de features de Py-Feat):
-  ```bash
-  cd backend/training
-  python entrenar_rostro.py --csv ruta/al/pyfeat_features_v5.csv
-  ```
-  Esto escribe `clasificador_rostro.joblib` y `clasificador_rostro_meta.json` directamente
-  en `backend/models/rostro/`.
-
-### Qué se versiona y qué no
-
-`clasificador_rostro.joblib` (~250 MB) y `beto_emoevent_best.pth` (~440 MB) **no se
-versionan** (superan el límite de 100 MB de GitHub) y están en `.gitignore`. Tras clonar,
-colócalos manualmente en su carpeta. El `clasificador_voz.pt` (~800 KB) y el `.json` de
-metadatos sí se versionan.
-
-Cada módulo es **independiente**: si falta un modelo (o sus dependencias), ese módulo queda
-deshabilitado y su endpoint responde `503`, pero los demás siguen funcionando.
+Cada modulo es **independiente**: si falta un modelo (o sus dependencias), ese modulo queda
+deshabilitado y su endpoint responde `503`, pero los demas siguen funcionando.
 
 ---
 
 ## Uso
 
-El sistema tiene dos partes: el **backend** (API) y el **frontend** (web). Cada uno corre
-en su propia terminal.
-
 ### 1. Levantar el backend
 
 ```bash
 cd backend
-python -m uvicorn main:app --host 127.0.0.1 --port 8000
+.venv\Scripts\Activate.ps1
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Queda disponible en `http://localhost:8000`. En el log verás `Modelos listos.` y, si el
-modelo de rostro está presente, `Modelo de rostro listo (bundle rostro-v5).`
-
-> Alternativa: `fastapi dev main.py` (requiere instalar el extra `pip install "fastapi[standard]"`).
+Queda disponible en `http://localhost:8000`.
 
 ### 2. Levantar el frontend
 
@@ -134,68 +89,63 @@ En otra terminal:
 
 ```bash
 cd frontend
-python -m http.server 5500
+python -m http.server 5501
 ```
 
-Abre `http://localhost:5500` en el navegador.
-
-> El frontend apunta a `http://localhost:8000` (en `frontend/js/app.js` y `frontend/js/rostro.js`).
-> Si cambias el puerto del backend, ajústalo ahí.
+Abre `http://localhost:5501` en el navegador.
 
 ### Desde el frontend puedes:
 
-**Módulo de Voz (columna izquierda):**
-- **Subir un archivo** `.wav` y predecir su emoción.
-- **Grabar tu voz** con el micrófono (se convierte a WAV en el navegador).
-- **Probar el audio de ejemplo** del dataset.
+**Modulo de Voz:**
+- Subir un archivo `.wav` y predecir su emocion.
+- Grabar tu voz con el microfono (se convierte a WAV en el navegador).
 
-**Módulo de Rostro (columna derecha):**
-- **Subir una imagen** (`.jpg`/`.png`) y predecir la emoción del rostro.
-- **Usar la cámara** para capturar una foto y predecir.
+**Modulo de Rostro:**
+- Subir una imagen (`.jpg`/`.png`) y predecir la emocion del rostro.
+- Usar la camara para capturar una foto y predecir.
 
-Cada predicción muestra la emoción ganadora con su confianza y el ranking de las 7 clases.
+**Modulo de Texto:**
+- Escribir un texto en espanol y predecir la emocion.
+
+**Fusion Multimodal:**
+- Combinar las predicciones de los modulos disponibles mediante voto suave ponderado por F1.
 
 ---
 
-## Uso directo de la API (opcional)
+## Uso directo de la API
 
-**Voz — audio de prueba fijo:**
-
+**Voz:**
 ```bash
-curl http://localhost:8000/test
+curl -X POST http://localhost:8000/predecir -F "audio=@archivo.wav"
 ```
 
-**Voz — subir tu propio audio:**
-
+**Rostro:**
 ```bash
-curl -X POST http://localhost:8000/predecir -F "audio=@ruta/al/archivo.wav"
+curl -X POST http://localhost:8000/predecir_rostro -F "imagen=@foto.jpg"
 ```
 
-**Rostro — subir una imagen:**
-
+**Texto:**
 ```bash
-curl -X POST http://localhost:8000/predecir_rostro -F "imagen=@ruta/a/la/foto.jpg"
+curl -X POST http://localhost:8000/predecir_texto -H "Content-Type: application/json" -d '{"texto": "Estoy muy feliz hoy"}'
 ```
 
-**Respuesta (ambos):**
+**Respuesta (los tres modulos):**
 
 ```json
 {
-  "emocion": "happy",
+  "emocion": "joy",
   "emocion_es": "felicidad",
   "confianza": 0.87,
-  "ranking": [["happy", 0.87], ["neutral", 0.06], ["sad", 0.03]]
+  "ranking": [["joy", 0.87], ["neutral", 0.06], ["sadness", 0.03], ...]
 }
 ```
 
-Errores de validación del rostro (sin rostro detectado, pose extrema, etc.) → `422`.
-Si el modelo de rostro no está instalado → `503`.
-
 ---
 
-## Documentación
+## Documentacion
 
-- [Docs/modulo_rostro.md](Docs/modulo_rostro.md) — módulo de rostro: estructura del modelo,
-  cómo cambiarlo/reentrenarlo y setup de FFmpeg.
-- [Docs/pipeline_rostro.md](Docs/pipeline_rostro.md) — pipeline detallado de inferencia de rostro.
+- [Docs/modulo_voz.md](Docs/modulo_voz.md) — modulo de voz: arquitectura, dataset, entrenamiento.
+- [Docs/modulo_rostro.md](Docs/modulo_rostro.md) — modulo de rostro: EfficientNet-B0 + YuNet.
 - [Docs/pipeline_audio.md](Docs/pipeline_audio.md) — preprocesamiento de audio.
+- [Docs/pipeline_rostro.md](Docs/pipeline_rostro.md) — pipeline de inferencia de rostro.
+- [Docs/pipeline_texto.md](Docs/pipeline_texto.md) — preprocesamiento de texto para BETO.

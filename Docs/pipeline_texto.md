@@ -233,23 +233,27 @@ probabilidades = F.softmax(logits, dim=-1).squeeze().tolist()
 
 ## Carga del checkpoint entrenado
 
-El mejor checkpoint se guarda en `checkpoints/beto_emoevent_best.pth`. Para cargarlo en modo inferencia:
+El checkpoint v4 se encuentra en `backend/models/texto/clasificador_texto_v4.pt`. Para cargarlo en modo inferencia:
 
 ```python
 import torch
 from transformers import AutoModelForSequenceClassification
-from src.config import MODEL_NAME, NUM_LABELS, ID2LABEL, LABEL2ID, BEST_CHECKPOINT
 
-def cargar_modelo_inferencia(device="cpu"):
+MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
+NUM_LABELS = 7
+LABEL2ID = {"others": 0, "joy": 1, "sadness": 2, "anger": 3,
+            "fear": 4, "disgust": 5, "surprise": 6}
+ID2LABEL = {v: k for k, v in LABEL2ID.items()}
+
+def cargar_modelo_inferencia(ruta_checkpoint, device="cpu"):
     modelo = AutoModelForSequenceClassification.from_pretrained(
         MODEL_NAME,
         num_labels=NUM_LABELS,
         id2label=ID2LABEL,
         label2id=LABEL2ID,
-        local_files_only=True,
     )
-    checkpoint = torch.load(BEST_CHECKPOINT, map_location=device)
-    modelo.load_state_dict(checkpoint["model_state_dict"])
+    state_dict = torch.load(ruta_checkpoint, map_location=device, weights_only=True)
+    modelo.load_state_dict(state_dict)
     modelo.to(device)
     modelo.eval()
     return modelo
@@ -278,4 +282,4 @@ Estas operaciones ocurren solo durante el entrenamiento y **no deben replicarse 
 - [ ] Los tensores de salida tienen forma `[1, 128]` (`batch_size=1`, `max_length=128`).
 - [ ] `token_type_ids` es un tensor de ceros.
 - [ ] El modelo está en modo `eval()` y el forward se ejecuta dentro de `torch.no_grad()`.
-- [ ] El checkpoint cargado es `beto_emoevent_best.pth`.
+- [ ] El checkpoint cargado es `clasificador_texto_v4.pt`.

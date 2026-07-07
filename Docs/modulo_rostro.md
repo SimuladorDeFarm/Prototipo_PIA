@@ -1,104 +1,100 @@
-# Módulo de Rostro (imagen) — Estructura del modelo y cómo cambiarlo
+# Modulo de Rostro — Guia General
 
-Este módulo predice la emoción de un rostro en una imagen. Espeja la estructura del
-módulo de voz: un backend FastAPI con un endpoint que recibe el dato (aquí una
-imagen) y un frontend que la envía y muestra el resultado.
-
-- **Extracción de features:** Py-Feat `Detectorv1` → Action Units (FACS), pose, landmarks.
-- **Clasificador:** un modelo de scikit-learn (por defecto Random Forest).
-- **Clases (7):** `neutral, happy, sad, anger, fear, disgust, surprise`.
-
-Pipeline detallado de validación e inferencia: ver [pipeline_rostro.md](pipeline_rostro.md).
+**Proyecto:** PIA — NeuroEmo
+**Modelo:** EfficientNet-B0 fine-tuned sobre AffectNet + deteccion facial YuNet
+**Tarea:** clasificacion de emocion a partir de imagen facial
+**Salida:** una de 7 emociones con distribucion de probabilidades
 
 ---
 
-## El contrato del modelo (lo importante)
+## Que hace este modulo
 
-El modelo **no** se guarda como un objeto "pelado". Se guarda como un **bundle
-autodescriptivo** (`backend/models/rostro/clasificador_rostro.joblib`): un `dict` que
-contiene tanto el modelo como el contrato que el backend necesita para usarlo.
+Recibe una imagen con un rostro y devuelve la emocion que expresa la expresion facial. Usa deteccion de rostro automatica (YuNet) para recortar la cara antes de clasificar con EfficientNet-B0.
 
-```python
-{
-  "modelo":            <clasificador sklearn>,   # con .predict_proba(X) y .classes_
-  "features":          ["AU01", ..., "AU43", "FaceScore"],  # columnas y ORDEN exacto
-  "clases":            ["anger", "disgust", "fear", "happy", "neutral", "sad", "surprise"],
-  "umbral_facescore":  0.90,
-  "pose_max_grados":   45.0,
-  "version":           "rostro-v5"
-}
+---
+
+## Arquitectura del modelo (v2)
+
+```
+Imagen (JPEG/PNG, cualquier resolucion)
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│  YuNet (face_detection_yunet_2023mar)   │
+│  Detector facial ONNX (~230 KB)         │
+│  Umbral de confianza: 0.5               │
+│  Salida: bounding box (x, y, w, h)      │
+│  Fallback: imagen completa si no detecta│
+└───────────────────┬─────────────────────┘
+                    │  recortar cara + 20% margen
+                    ▼
+┌─────────────────────────────────────────┐
+│  Resize 224×224 + Normalize (ImageNet)  │
+│  mean=[0.485, 0.456, 0.406]            │
+│  std=[0.229, 0.224, 0.225]             │
+└───────────────────┬─────────────────────┘
+                    ▼
+┌─────────────────────────────────────────┐
+│  EfficientNet-B0 (completamente         │
+│  descongelado, fine-tuned)              │
+│  Features: 1280 dims                    │
+└───────────────────┬─────────────────────┘
+                    ▼
+┌─────────────────────────────────────────┐
+│  Cabeza clasificadora                   │
+│  Dropout(0.4) → Linear(1280→512)        │
+│  → BatchNorm1d(512) → ReLU             │
+│  → Dropout(0.3) → Linear(512→128)       │
+│  → ReLU → Dropout(0.2)                 │
+│  → Linear(128→7) → Softmax             │
+└─────────────────────────────────────────┘
 ```
 
-`backend/models/src/inferencia_rostro.py` (`PredictorRostro`) lee **todo** desde este
-bundle: qué columnas pedirle a Py-Feat y en qué orden, qué umbrales de calidad aplicar
-y qué clases existen. **Nada de esto está hardcodeado en el backend.**
+---
 
-### Regla de intercambio
+## Dataset de entrenamiento
 
-Puedes cambiar el modelo (reentrenarlo, usar otro algoritmo, otras features u otras
-clases) y **el backend sigue funcionando sin tocar una línea**, siempre que el nuevo
-artefacto cumpla:
+**AffectNet** — dataset de expresiones faciales en estado natural (in-the-wild).
 
-1. Es un `dict` (bundle) con la clave `modelo` y, recomendado, `features`, `clases`,
-   `umbral_facescore`, `pose_max_grados`.
-2. `modelo` expone `.predict_proba(X)` y `.classes_` (cualquier clasificador sklearn:
-   RandomForest, SVM con `probability=True`, GradientBoosting, LogisticRegression…).
-3. Las columnas listadas en `features` son producibles por Py-Feat (AUs, `FaceScore`,
-   pose, landmarks `x_i`/`y_i`).
+| Detalle | Valor |
+|---|---|
+| Resolucion de entrenamiento | 224×224 px (resized desde ~96×96) |
+| Clases | 7 emociones |
+| Augmentation | Random erasing, affine, color jitter |
 
-Si el bundle declara otras `features` o `clases`, el backend se adapta solo.
+### Clases (7 emociones)
+
+| Indice | Etiqueta | Espanol |
+|---|---|---|
+| 0 | `anger` | Enojo |
+| 1 | `disgust` | Disgusto |
+| 2 | `fear` | Miedo |
+| 3 | `happy` | Alegria |
+| 4 | `neutral` | Neutral |
+| 5 | `sad` | Tristeza |
+| 6 | `surprise` | Sorpresa |
 
 ---
 
-## Cómo reentrenar / cambiar el modelo
+## Entrenamiento (v2)
 
-El entrenamiento parte del CSV de features ya extraídos por Py-Feat
-(`pyfeat_features_v5.csv`); **no requiere Py-Feat** (las features ya están calculadas).
-
-```bash
-python backend/training/entrenar_rostro.py --csv ruta/al/pyfeat_features_v5.csv
-```
-
-Esto regenera `backend/models/rostro/clasificador_rostro.joblib` (el bundle) y
-`clasificador_rostro_meta.json` (metadatos legibles). Reinicia el backend y listo.
-
-Para usar **otro algoritmo**, cambia el estimador en `entrenar_rostro.py` (la sección
-`RandomForestClassifier(...)`) por cualquier clasificador sklearn con `predict_proba`.
-El formato del bundle no cambia, así que la inferencia sigue igual.
+- EfficientNet-B0 **completamente descongelado** con LR discriminativo.
+- Pesos iniciales: ImageNet pre-trained.
+- Cosine annealing con warmup.
+- Label smoothing en la loss.
+- Data augmentation agresivo (random erasing, affine, color jitter).
+- **Metrica de seleccion:** F1 macro en validacion.
+- **F1 test:** ~0.640
 
 ---
 
-## Estado actual del modelo entrenado
+## Deteccion facial (YuNet)
 
-> ⚠️ El modelo incluido es un **prototipo funcional con precisión limitada**
-> (~38% accuracy en Test). Causa: en el dataset de entrenamiento la clase `neutral`
-> está muy subrepresentada (~360 ejemplos frente a miles de otras clases), porque solo
-> aparece en la partición `Train_balanced`. El modelo aprende mal `neutral` y tiende a
-> colapsar hacia `sad`.
->
-> Esto **no afecta al funcionamiento del programa**: la arquitectura está pensada
-> justo para que, con mejores datos o mejor balanceo, se reentrene y se reemplace el
-> bundle sin tocar el backend. Calidad del modelo y funcionamiento están desacoplados.
-
----
-
-## Instalación en Windows (FFmpeg)
-
-Py-Feat 2.x arrastra `torchcodec`, que necesita las DLLs *shared* de **FFmpeg** (4–8)
-para importarse, aunque solo usemos imágenes. En Windows no vienen por defecto, así
-que tras `pip install -r requirements.txt` hay que añadirlas una vez:
-
-1. Descargar un build *shared* de FFmpeg 7 para Windows (p. ej. de
-   [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases):
-   `ffmpeg-n7.1-latest-win64-gpl-shared-7.1.zip`).
-2. Copiar las DLLs de su carpeta `bin/` (`avcodec-61.dll`, `avutil-59.dll`,
-   `avformat-61.dll`, `swscale-8.dll`, etc.) dentro del paquete `torchcodec` del venv:
-   `backend/.venv/Lib/site-packages/torchcodec/` (junto a `libtorchcodec_core7.dll`).
-
-Verificar: `python -c "from feat import Detectorv1; print('OK')"`.
-
-Si FFmpeg falta, `import feat` lanza `RuntimeError: Could not load libtorchcodec`.
-En ese caso el backend de voz sigue funcionando y `/predecir_rostro` responde 503.
+Se usa **OpenCV FaceDetectorYN** con el modelo YuNet (ONNX):
+- Se descarga automaticamente (~230 KB) la primera vez.
+- Umbral de confianza: 0.5
+- Si no detecta ninguna cara, se usa la **imagen completa** como fallback.
+- Si detecta multiples caras, se usa la primera (mayor confianza).
 
 ---
 
@@ -109,14 +105,25 @@ En ese caso el backend de voz sigue funcionando y `/predecir_rostro` responde 50
 ```json
 {
   "emocion": "happy",
-  "emocion_es": "felicidad",
+  "emocion_es": "alegria",
   "confianza": 0.88,
-  "ranking": [["happy", 0.88], ["sad", 0.05], ...]
+  "ranking": [["happy", 0.88], ["neutral", 0.05], ...],
+  "caras_detectadas": 1
 }
 ```
 
-Errores de validación (rostro no detectado, pose extrema, etc.) → HTTP 422 con el
-motivo. Si Py-Feat no está instalado o no hay modelo → HTTP 503 (el resto del backend,
-incluido el módulo de voz, sigue funcionando).
+Si no se puede decodificar la imagen → HTTP 422.
+Si el modulo no esta disponible → HTTP 503.
 
-Frontend: `frontend/rostro.html` (subir imagen o capturar con cámara).
+---
+
+## Estructura de archivos
+
+```
+backend/models/
+├── rostro/
+│   ├── mejor_modelo_v2.pt                    ← pesos EfficientNet-B0 (~18 MB)
+│   └── face_detection_yunet_2023mar.onnx     ← YuNet (se descarga solo)
+└── src/
+    └── inferencia_rostro.py                  ← PredictorRostro
+```

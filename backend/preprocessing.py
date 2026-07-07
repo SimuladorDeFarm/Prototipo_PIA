@@ -24,8 +24,10 @@ def preprocesar(audio_bytes: bytes) -> np.ndarray:
         data = data.mean(axis=1).astype(np.float32)
 
     if sr != SAMPLE_RATE:
-        import librosa
-        data = librosa.resample(data, orig_sr=sr, target_sr=SAMPLE_RATE).astype(np.float32)
+        from math import gcd
+        from scipy.signal import resample_poly
+        g = gcd(SAMPLE_RATE, sr)
+        data = resample_poly(data, up=SAMPLE_RATE // g, down=sr // g).astype(np.float32)
 
     rms = np.sqrt(np.mean(data ** 2))
     if rms >= 1e-8:

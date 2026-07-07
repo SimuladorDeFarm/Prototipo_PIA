@@ -1,25 +1,24 @@
-"""Inferencia: predecir la emoción de un audio con el modelo entrenado.
+"""Inferencia del módulo de voz (HuBERT fine-tuned v4) para el prototipo web.
 
-Reúne las dos piezas ya entrenadas/congeladas: HuBERT (extractor) + la cabeza
-clasificadora guardada en el checkpoint. Dado un .wav, extrae su embedding,
-lo pasa por la cabeza y devuelve la emoción predicha con su confianza
-(probabilidades softmax sobre las 7 clases).
+Pipeline: audio bytes → preprocesar (mono, 16kHz, RMS norm, trim) → pad/truncar
+→ HuBERTEmotionModel → 7 probabilidades → emoción
 
-Esto es SOLO inferencia: no entrena ni modifica nada (ver Regla 6 del notebook).
-El audio de entrada debe estar en el mismo formato que el de entrenamiento
-(mono, 16 kHz); idealmente preprocesado igual (normalizado y con silencio
-recortado) para que la predicción sea representativa.
+Replica la arquitectura de entrenar_v4.py (PIA_modulo_voz):
+HuBERT con 4 capas descongeladas + cabeza (768→512→128→7).
+El state_dict incluye HuBERT + cabeza juntos.
 """
 
+import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
+from transformers import HubertModel
 
-from . import config
-from .clasificador import CabezaEmocion
-from .embeddings import cargar_audio, extraer_embedding
-from .modelo import cargar_hubert
+HUBERT_MODEL_NAME = "facebook/hubert-base-ls960"
+EMBEDDING_DIM = 768
+EMOCIONES_7 = ["neutral", "joy", "sadness", "anger", "fear", "disgust", "surprise"]
+MAX_LEN_SAMPLES = 48000  # 3 segundos a 16kHz
 
-# Nombres de las emociones en español para mostrar al usuario.
 NOMBRES_ES = {
     "neutral": "neutral",
     "joy": "felicidad",
@@ -31,53 +30,84 @@ NOMBRES_ES = {
 }
 
 
-def cargar_clasificador(ruta_checkpoint=None, dispositivo=None):
-    """Carga la cabeza clasificadora desde el checkpoint. Devuelve (modelo, estado)."""
-    ruta = ruta_checkpoint or config.CHECKPOINT_FILE
-    if not ruta.exists():
-        raise FileNotFoundError(
-            f"No existe el checkpoint: {ruta}. Entrena el modelo antes (python main.py).")
+class HuBERTEmotionModel(nn.Module):
+    """HuBERT + cabeza clasificadora, con fine-tuning parcial."""
 
-    dispositivo = dispositivo or torch.device(
-        "cuda" if torch.cuda.is_available() else "cpu")
-    estado = torch.load(ruta, map_location=dispositivo, weights_only=False)
+    def __init__(self, num_clases=7, unfreeze_layers=4):
+        super().__init__()
+        self.hubert = HubertModel.from_pretrained(HUBERT_MODEL_NAME)
 
-    modelo = CabezaEmocion(
-        dim_entrada=estado["embedding_dim"],
-        dim_oculta=estado["hidden_dim"],
-        num_clases=len(estado["emociones"]),
-        dropout=estado["dropout"],
-    ).to(dispositivo)
-    modelo.load_state_dict(estado["model_state"])
-    modelo.eval()
-    return modelo, estado
+        for param in self.hubert.parameters():
+            param.requires_grad = False
+
+        n_layers = len(self.hubert.encoder.layers)
+        for i in range(n_layers - unfreeze_layers, n_layers):
+            for param in self.hubert.encoder.layers[i].parameters():
+                param.requires_grad = True
+
+        self.head = nn.Sequential(
+            nn.Dropout(0.4),
+            nn.Linear(EMBEDDING_DIM, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, 128),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(128, num_clases),
+        )
+
+    def forward(self, waveforms):
+        outputs = self.hubert(waveforms)
+        embeddings = outputs.last_hidden_state.mean(dim=1)
+        return self.head(embeddings)
 
 
 class Predictor:
-    """Carga HuBERT + la cabeza una sola vez y predice sobre uno o varios audios."""
+    """Carga HuBERTEmotionModel v4 una vez y predice sobre audios."""
 
     def __init__(self, ruta_checkpoint=None, device=None):
-        self.clasificador, estado = cargar_clasificador(ruta_checkpoint, device)
-        self.dispositivo = next(self.clasificador.parameters()).device
-        self.emociones = estado["emociones"]
-        self.metadata = estado.get("metadata", {})
-        # HuBERT congelado, cargado en silencio.
-        self.hubert, _ = cargar_hubert(device=str(self.dispositivo), verbose=False)
+        self.dispositivo = device or torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
+
+        if ruta_checkpoint is None or not ruta_checkpoint.exists():
+            raise FileNotFoundError(
+                f"No se encontró el checkpoint de voz: {ruta_checkpoint}"
+            )
+
+        self.modelo = HuBERTEmotionModel(
+            num_clases=len(EMOCIONES_7), unfreeze_layers=4
+        ).to(self.dispositivo)
+
+        state = torch.load(ruta_checkpoint, map_location=self.dispositivo, weights_only=False)
+        self.modelo.load_state_dict(state)
+        self.modelo.eval()
 
     @torch.no_grad()
     def predecir(self, ruta_audio):
-        """Devuelve un dict con la emoción predicha y las probabilidades por clase."""
-        waveform = cargar_audio(ruta_audio)
-        embedding = extraer_embedding(self.hubert, self.dispositivo, waveform)
+        """Recibe ruta a WAV preprocesado y devuelve predicción."""
+        import soundfile as sf
+        wav, sr = sf.read(str(ruta_audio), dtype="float32")
+        if wav.ndim > 1:
+            wav = wav.mean(axis=1).astype(np.float32)
 
-        x = torch.from_numpy(embedding).unsqueeze(0).to(self.dispositivo)
-        probs = F.softmax(self.clasificador(x), dim=1).squeeze(0).cpu().numpy()
+        if len(wav) > MAX_LEN_SAMPLES:
+            wav = wav[:MAX_LEN_SAMPLES]
+        elif len(wav) < MAX_LEN_SAMPLES:
+            wav = np.pad(wav, (0, MAX_LEN_SAMPLES - len(wav)), mode="constant")
+
+        tensor = torch.from_numpy(wav).unsqueeze(0).to(self.dispositivo)
+        logits = self.modelo(tensor)
+        probs = F.softmax(logits, dim=1).squeeze(0).cpu().numpy()
 
         ranking = sorted(
-            ((self.emociones[i], float(probs[i])) for i in range(len(self.emociones))),
-            key=lambda x: x[1], reverse=True,
+            ((EMOCIONES_7[i], float(probs[i])) for i in range(len(EMOCIONES_7))),
+            key=lambda x: x[1],
+            reverse=True,
         )
         emocion, confianza = ranking[0]
+
         return {
             "emocion": emocion,
             "emocion_es": NOMBRES_ES.get(emocion, emocion),
