@@ -40,7 +40,25 @@ Este script crea el entorno virtual en `backend/.venv`, instala
 texto) desde Hugging Face (ver seccion "Modelos" mas abajo). Al terminar, el proyecto
 queda listo para levantar con `./iniciar.sh`.
 
-### Opcion B (alternativa / Windows): instalacion manual
+### Opcion B (recomendada, Windows): `install.ps1`
+
+Desde la raiz del proyecto, en PowerShell:
+
+```powershell
+.\install.ps1
+```
+
+Hace lo mismo que `install.sh`: crea el entorno virtual en `backend\.venv`, instala
+`backend\requirements.txt` y descarga los 3 modelos desde Hugging Face. Al terminar,
+el proyecto queda listo para levantar con `.\iniciar.ps1`.
+
+> Si Windows bloquea la ejecucion de scripts `.ps1` (politica de ejecucion por defecto),
+> corre una vez en PowerShell, sin permisos de administrador:
+> ```powershell
+> Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+> ```
+
+### Opcion C (manual, cualquier sistema operativo)
 
 ```bash
 cd backend
@@ -207,9 +225,21 @@ puerto 5501) en una sola terminal, muestra el estado de cada uno (`[OK]`/`[ERROR
 link para abrir el frontend. Con `Ctrl+C` detiene ambos de forma segura y libera los
 puertos automaticamente.
 
-### Opcion B (alternativa): backend y frontend por separado
+### Opcion B (recomendada, Windows): backend + frontend juntos con `iniciar.ps1`
 
-Util en Windows o si quieres controlar cada proceso en su propia terminal.
+Desde la raiz del proyecto, en PowerShell:
+
+```powershell
+.\iniciar.ps1
+```
+
+Mismo comportamiento que `iniciar.sh`: levanta backend y frontend en una sola consola,
+muestra `[OK]`/`[ERROR]` de cada uno y el link del frontend. Con `Ctrl+C` detiene ambos
+procesos (y sus hijos) y libera los puertos 8000/5501.
+
+### Opcion C (alternativa): backend y frontend por separado
+
+Util si quieres controlar cada proceso en su propia terminal.
 
 **1. Levantar el backend**
 
