@@ -27,6 +27,21 @@ Los tres módulos viven en el mismo backend y devuelven el mismo formato de resp
 
 ## Instalacion
 
+### Opcion A (recomendada, Linux/Mac): `install.sh`
+
+Desde la raiz del proyecto:
+
+```bash
+./install.sh
+```
+
+Este script crea el entorno virtual en `backend/.venv`, instala
+`backend/requirements.txt` y descarga automaticamente los 3 modelos (voz, rostro,
+texto) desde Hugging Face (ver seccion "Modelos" mas abajo). Al terminar, el proyecto
+queda listo para levantar con `./iniciar.sh`.
+
+### Opcion B (alternativa / Windows): instalacion manual
+
 ```bash
 cd backend
 python -m venv .venv
@@ -34,6 +49,9 @@ python -m venv .venv
 # source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 ```
+
+Con esta opcion, la descarga de los modelos queda pendiente: hacela por separado
+siguiendo la seccion "Modelos" de abajo.
 
 ## Modelos
 
