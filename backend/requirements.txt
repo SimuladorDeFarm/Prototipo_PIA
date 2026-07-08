@@ -23,3 +23,5 @@ opencv-python
 Pillow
 # Módulo de texto (BETO)
 emoji
+# Descarga de checkpoints (voz, rostro, texto) desde Hugging Face Hub
+huggingface_hub

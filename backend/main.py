@@ -8,15 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from models.src.inferencia import Predictor
+from models.verificar_modelos import RUTAS_MODELOS, modelo_disponible, verificar_todos
 from preprocessing import preprocesar
-
-# Cada modelo vive en su propia carpeta dentro de models/ (voz, rostro, texto).
-# Para cambiar un modelo por otro mejor/peor entrenado, reemplaza el archivo
-# correspondiente sin tocar este código (ver README → "Modelos").
-MODELS_DIR = Path(__file__).parent / "models"
-CHECKPOINT = MODELS_DIR / "voz" / "clasificador_voz_v4.pt"
-CHECKPOINT_ROSTRO = MODELS_DIR / "rostro" / "mejor_modelo_v2.pt"
-CHECKPOINT_TEXTO = MODELS_DIR / "texto" / "clasificador_texto_v4.pt"
 
 # Audio fijo para pruebas: Actor_01, emoción joy (03)
 TEST_AUDIO = Path(__file__).parent.parent / "dataset" / "Actor_01" / "03-01-03-01-01-01-01.wav"
@@ -29,24 +22,40 @@ _predictor_texto = None   # PredictorTexto | None (import perezoso: transformers
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _predictor, _predictor_rostro, _predictor_texto
-    print("Cargando modelos...")
-    _predictor = Predictor(ruta_checkpoint=CHECKPOINT)
+    print("Verificando modelos...")
+    verificar_todos()
 
-    # El módulo de rostro es opcional: si py-feat no está instalado o no hay
-    # modelo entrenado, el backend de voz sigue funcionando igualmente.
+    print("Cargando modelos...")
+
+    # Los tres módulos son opcionales: si falta el checkpoint, ese módulo
+    # queda deshabilitado (503) pero los demás siguen funcionando.
+    if modelo_disponible("voz"):
+        _predictor = Predictor(ruta_checkpoint=RUTAS_MODELOS["voz"])
+        print("Modelo de voz listo.")
+    else:
+        _predictor = None
+        print(f"[aviso] Módulo de voz no disponible: falta {RUTAS_MODELOS['voz']}")
+
     try:
         from models.src.inferencia_rostro import PredictorRostro
-        _predictor_rostro = PredictorRostro(ruta_pesos=CHECKPOINT_ROSTRO)
-        print(f"Modelo de rostro listo ({_predictor_rostro.version}).")
+        if modelo_disponible("rostro"):
+            _predictor_rostro = PredictorRostro(ruta_pesos=RUTAS_MODELOS["rostro"])
+            print(f"Modelo de rostro listo ({_predictor_rostro.version}).")
+        else:
+            _predictor_rostro = None
+            print(f"[aviso] Módulo de rostro no disponible: falta {RUTAS_MODELOS['rostro']}")
     except Exception as e:
         _predictor_rostro = None
         print(f"[aviso] Módulo de rostro no disponible: {e}")
 
-    # El módulo de texto también es opcional, mismo criterio.
     try:
         from models.src.inferencia_texto import PredictorTexto
-        _predictor_texto = PredictorTexto(ruta_checkpoint=CHECKPOINT_TEXTO)
-        print("Modelo de texto listo.")
+        if modelo_disponible("texto"):
+            _predictor_texto = PredictorTexto(ruta_checkpoint=RUTAS_MODELOS["texto"])
+            print("Modelo de texto listo.")
+        else:
+            _predictor_texto = None
+            print(f"[aviso] Módulo de texto no disponible: falta {RUTAS_MODELOS['texto']}")
     except Exception as e:
         _predictor_texto = None
         print(f"[aviso] Módulo de texto no disponible: {e}")
