@@ -10,6 +10,9 @@ dist/
 build/
 *.egg-info/
 models/
+*.zip
+modelos/
+CLAUDE.md
 # ==========================================
 # Archivos de Configuración y Secretos (¡CRÍTICO!)
 # ==========================================

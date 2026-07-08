@@ -38,22 +38,91 @@ pip install -r requirements.txt
 ## Modelos
 
 Los modelos estan organizados de forma modular: cada modulo tiene su propia carpeta
-dentro de `backend/models/`.
+dentro de `backend/models/`. Estos archivos pesan ~300 MB en total, superan el limite
+de 100 MB de GitHub y por eso **no estan en el repositorio** (`backend/models/` esta en
+`.gitignore`): se descargan aparte y se copian a mano tras clonar.
+
+### 1. Descargar los modelos
+
+Descarga la carpeta `modelos/` completa desde: **[ENLACE DE DESCARGA AQUI]**
+
+Debe contener exactamente esta estructura:
+
+```
+modelos/
+├── rostro/
+│   ├── face_detection_yunet_2023mar.onnx
+│   ├── mejor_modelo_v2.pt
+│   └── metadata_v2.json
+├── texto/
+│   ├── clasificador_texto_v4.json
+│   └── clasificador_texto_v4.pt
+└── voz/
+    ├── clasificador_voz_v4.pt
+    └── metadata_voz_v4.json
+```
+
+### 2. Copiar cada archivo a su carpeta dentro de `backend/models/`
+
+El backend espera esta estructura final (nota que `backend/models/` ya trae la
+subcarpeta `src/` con el codigo de inferencia; los modelos descargados van **junto** a esa
+carpeta, uno por modulo):
 
 ```
 backend/models/
 ├── voz/
-│   └── clasificador_voz_v4.pt        ← HuBERT fine-tuned v4 (~362 MB)
+│   ├── clasificador_voz_v4.pt        ← HuBERT fine-tuned v4 (~362 MB) [requerido]
+│   └── metadata_voz_v4.json          ← metadata del entrenamiento (informativo)
 ├── rostro/
-│   ├── mejor_modelo_v2.pt            ← EfficientNet-B0 v2 (~18 MB)
-│   └── face_detection_yunet_2023mar.onnx  ← YuNet (se descarga solo, ~230 KB)
+│   ├── mejor_modelo_v2.pt            ← EfficientNet-B0 v2 (~18 MB) [requerido]
+│   ├── metadata_v2.json              ← metadata del entrenamiento (informativo)
+│   └── face_detection_yunet_2023mar.onnx  ← YuNet [opcional: se descarga solo si falta, ~230 KB]
 ├── texto/
-│   └── clasificador_texto_v4.pt      ← BETO fine-tuned v4 (~419 MB)
-└── src/                              ← codigo de inferencia
+│   ├── clasificador_texto_v4.pt      ← BETO fine-tuned v4 (~419 MB) [requerido]
+│   └── clasificador_texto_v4.json    ← metadata del entrenamiento (informativo)
+└── src/                              ← codigo de inferencia (ya viene en el repo)
     ├── inferencia.py                 ← Predictor de voz (HuBERTEmotionModel)
     ├── inferencia_rostro.py          ← PredictorRostro (EfficientNet-B0 + YuNet)
     └── inferencia_texto.py           ← PredictorTexto (BETO)
 ```
+
+Es decir: copia cada carpeta (`rostro/`, `texto/`, `voz/`) de lo descargado dentro de
+`backend/models/`, mezclando con lo que ya existe (no borres `src/`).
+
+```bash
+# Desde la raiz del proyecto, con lo descargado en ~/Descargas/modelos/
+cp ~/Descargas/modelos/rostro/* backend/models/rostro/
+cp ~/Descargas/modelos/texto/*  backend/models/texto/
+cp ~/Descargas/modelos/voz/*    backend/models/voz/
+```
+
+```powershell
+# Windows (PowerShell), con lo descargado en Descargas\modelos\
+Copy-Item Descargas\modelos\rostro\* backend\models\rostro\
+Copy-Item Descargas\modelos\texto\*  backend\models\texto\
+Copy-Item Descargas\modelos\voz\*    backend\models\voz\
+```
+
+Los archivos `.json` (`metadata_v2.json`, `metadata_voz_v4.json`, `clasificador_texto_v4.json`)
+son metadata del entrenamiento (hiperparametros, metricas, etc.): **no los lee el codigo de
+inferencia**, pero se recomienda copiarlos igual para tener el registro completo del modelo.
+El unico archivo que se descarga solo si falta es `face_detection_yunet_2023mar.onnx`
+(YuNet, detector facial, ~230 KB, ver `backend/models/src/inferencia_rostro.py`).
+
+### 3. Verificar que las rutas coincidan con el codigo
+
+El backend (`backend/main.py`) carga los checkpoints desde rutas fijas relativas a
+`backend/models/`:
+
+```python
+CHECKPOINT        = MODELS_DIR / "voz"    / "clasificador_voz_v4.pt"
+CHECKPOINT_ROSTRO = MODELS_DIR / "rostro" / "mejor_modelo_v2.pt"
+CHECKPOINT_TEXTO  = MODELS_DIR / "texto"  / "clasificador_texto_v4.pt"
+```
+
+Si el nombre de archivo no coincide exactamente (mayusculas, version, etc.), ese modulo
+no carga y su endpoint responde `503` al arrancar el backend (revisa el log
+`[aviso] Módulo de ... no disponible: ...` al iniciar con `uvicorn`).
 
 ### Que archivo necesita cada modulo
 
@@ -62,9 +131,6 @@ backend/models/
 | **Voz** | `clasificador_voz_v4.pt` | HuBERT (4 capas descongeladas) + cabeza 768→512→128→7 | RAVDESS | ~0.744 |
 | **Rostro** | `mejor_modelo_v2.pt` | EfficientNet-B0 + cabeza 1280→512→128→7 | AffectNet | ~0.640 |
 | **Texto** | `clasificador_texto_v4.pt` | BETO (full fine-tune) + clasificacion 7 clases | EMOEvent (es) | ~0.166 |
-
-> **Importante:** los checkpoints `.pt` superan los 100 MB de GitHub y estan en `.gitignore`.
-> Tras clonar, colocalos manualmente en su carpeta o descargalos desde Google Drive.
 
 Cada modulo es **independiente**: si falta un modelo (o sus dependencias), ese modulo queda
 deshabilitado y su endpoint responde `503`, pero los demas siguen funcionando.
