@@ -21,3 +21,5 @@ numpy
 torchvision
 opencv-python
 Pillow
+# Módulo de texto (BETO)
+emoji
