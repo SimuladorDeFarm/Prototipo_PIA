@@ -16,7 +16,13 @@ FRONTEND_PORT=5501
 
 if [ ! -x "$PYTHON_BACKEND" ]; then
     echo "No se encontró el entorno virtual del backend en: $PYTHON_BACKEND"
-    echo "Crea el venv e instala dependencias primero (ver README -> Instalacion)."
+    echo "Corre primero: ./install.sh"
+    exit 1
+fi
+
+if ! "$PYTHON_BACKEND" -c "import fastapi, uvicorn" >/dev/null 2>&1; then
+    echo "El entorno virtual existe pero faltan dependencias (fastapi/uvicorn)."
+    echo "Corre primero: ./install.sh"
     exit 1
 fi
 

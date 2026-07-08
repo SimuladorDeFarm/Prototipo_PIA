@@ -9,7 +9,6 @@ pythonenv/
 dist/
 build/
 *.egg-info/
-models/
 *.zip
 modelos/
 CLAUDE.md
@@ -59,9 +58,12 @@ Thumbs.db
 dataset/
 
 # ==========================================
-# Modelos pesados (superan el límite de 100 MB de GitHub). No se versionan:
-# cada quien los coloca en su carpeta dentro de backend/models/ tras clonar.
-# Ver README → "Modelos".
+# Checkpoints pesados y detector facial (se descarga solo). No se
+# versionan: se consiguen con `python -m models.descargar_modelos` o a
+# mano (ver README → "Modelos"). El código de inferencia en
+# backend/models/ y backend/models/src/ SÍ se versiona.
 # ==========================================
-backend/models/rostro/clasificador_rostro.joblib
-backend/models/texto/beto_emoevent_best.pth
+backend/models/voz/*.pt
+backend/models/rostro/*.pt
+backend/models/rostro/*.onnx
+backend/models/texto/*.pt

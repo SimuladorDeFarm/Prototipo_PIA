@@ -40,9 +40,46 @@ pip install -r requirements.txt
 Los modelos estan organizados de forma modular: cada modulo tiene su propia carpeta
 dentro de `backend/models/`. Estos archivos pesan ~300 MB en total, superan el limite
 de 100 MB de GitHub y por eso **no estan en el repositorio** (`backend/models/` esta en
-`.gitignore`): se descargan aparte y se copian a mano tras clonar.
+`.gitignore`): se descargan aparte tras clonar. Hay dos formas de conseguirlos.
 
-### 1. Descargar los modelos
+### Opcion A (recomendada): descarga automatica desde Hugging Face
+
+Cada checkpoint vive en su propio repo de Hugging Face Hub. Con las dependencias ya
+instaladas (`huggingface_hub` esta en `requirements.txt`), desde `backend/`:
+
+```bash
+# Linux/Mac
+.venv/bin/python -m models.descargar_modelos
+
+# Windows
+.venv\Scripts\python -m models.descargar_modelos
+```
+
+El script (`backend/models/descargar_modelos.py`):
+- Revisa cada checkpoint (`voz`, `rostro`, `texto`) y si ya esta en disco no lo vuelve a bajar.
+- Si falta, lo descarga mostrando una barra de progreso en pantalla (%, velocidad, ETA) desde:
+  - **voz** → `SimuladorDeFarm/NeuroEmoInnovat_modelo_voz`
+  - **rostro** → `SimuladorDeFarm/NeuroEmoInnovat_modelo_rostro`
+  - **texto** → `SimuladorDeFarm/NeuroEmoInnovat_modelo_texto`
+- Si una descarga falla (sin internet, repo no accesible, etc.) **no interrumpe el proceso**:
+  avisa con `[ERROR]`, te da el link de descarga manual y la ruta exacta donde debe quedar
+  el archivo, y sigue con los demas modulos.
+
+Para solo revisar el estado de los tres sin descargar nada:
+
+```bash
+.venv/bin/python -m models.verificar_modelos
+```
+
+(Este mismo chequeo corre automaticamente cada vez que arrancas el backend, ver
+`main.py` → `lifespan`.)
+
+### Opcion B (alternativa): descarga manual desde Google Drive
+
+Si prefieres no usar Hugging Face, o la descarga automatica de la Opcion A falla para
+algun modulo, puedes bajar los archivos a mano.
+
+#### 1. Descargar los modelos
 
 Descarga la carpeta `modelos/` completa desde: **[ENLACE DE DESCARGA AQUI]**
 
@@ -62,7 +99,7 @@ modelos/
     └── metadata_voz_v4.json
 ```
 
-### 2. Copiar cada archivo a su carpeta dentro de `backend/models/`
+#### 2. Copiar cada archivo a su carpeta dentro de `backend/models/`
 
 El backend espera esta estructura final (nota que `backend/models/` ya trae la
 subcarpeta `src/` con el codigo de inferencia; los modelos descargados van **junto** a esa
@@ -109,7 +146,7 @@ inferencia**, pero se recomienda copiarlos igual para tener el registro completo
 El unico archivo que se descarga solo si falta es `face_detection_yunet_2023mar.onnx`
 (YuNet, detector facial, ~230 KB, ver `backend/models/src/inferencia_rostro.py`).
 
-### 3. Verificar que las rutas coincidan con el codigo
+#### 3. Verificar que las rutas coincidan con el codigo
 
 El backend (`backend/main.py`) carga los checkpoints desde rutas fijas relativas a
 `backend/models/`:
@@ -139,7 +176,24 @@ deshabilitado y su endpoint responde `503`, pero los demas siguen funcionando.
 
 ## Uso
 
-### 1. Levantar el backend
+### Opcion A (recomendada): backend + frontend juntos con `iniciar.sh`
+
+Desde la raiz del proyecto (Linux/Mac):
+
+```bash
+./iniciar.sh
+```
+
+Este script levanta el backend (`uvicorn`, puerto 8000) y el frontend (`http.server`,
+puerto 5501) en una sola terminal, muestra el estado de cada uno (`[OK]`/`[ERROR]`) y el
+link para abrir el frontend. Con `Ctrl+C` detiene ambos de forma segura y libera los
+puertos automaticamente.
+
+### Opcion B (alternativa): backend y frontend por separado
+
+Util en Windows o si quieres controlar cada proceso en su propia terminal.
+
+**1. Levantar el backend**
 
 ```bash
 cd backend
@@ -149,7 +203,7 @@ python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 Queda disponible en `http://localhost:8000`.
 
-### 2. Levantar el frontend
+**2. Levantar el frontend**
 
 En otra terminal:
 
